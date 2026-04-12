@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default function PlanPage() {
   const [content, setContent] = useState("");
@@ -23,7 +24,7 @@ export default function PlanPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <article className="markdown-content">
-        <ReactMarkdown>{content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       </article>
     </div>
   );

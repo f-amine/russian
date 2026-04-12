@@ -5,14 +5,19 @@ import { Button } from "@/components/ui/button";
 
 export function AudioPlayer({ rank }: { rank: number }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const rankRef = useRef(rank);
   const [playing, setPlaying] = useState(false);
 
   const play = useCallback(() => {
     const src = `/audio/${String(rank).padStart(4, "0")}.mp3`;
-    if (!audioRef.current) {
+    if (!audioRef.current || rankRef.current !== rank) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
       audioRef.current = new Audio(src);
       audioRef.current.onended = () => setPlaying(false);
       audioRef.current.onerror = () => setPlaying(false);
+      rankRef.current = rank;
     }
     audioRef.current.currentTime = 0;
     audioRef.current.play();

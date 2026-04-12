@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AudioPlayer } from "@/components/audio-player";
+import { WordBreakdown } from "@/components/word-breakdown";
 import { loadVerbs } from "@/lib/verbs";
 import {
   getProgress,
@@ -13,9 +14,19 @@ import {
   updateTodayLog,
   getTodayLog,
 } from "@/lib/progress";
+import type { Confidence } from "@/lib/progress";
 import type { Verb, VerbProgress } from "@/lib/types";
 
 type Mode = "setup" | "learn" | "recall" | "results";
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const shuffled = [...arr];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
 
 export default function StudyPage() {
   const [allVerbs, setAllVerbs] = useState<Verb[]>([]);
@@ -23,9 +34,9 @@ export default function StudyPage() {
   const [sessionVerbs, setSessionVerbs] = useState<Verb[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
-  const [results, setResults] = useState<{ rank: number; correct: boolean }[]>(
-    []
-  );
+  const [results, setResults] = useState<
+    { rank: number; correct: boolean; confidence: Confidence; nextReview: string | null }[]
+  >([]);
   const [batchSize, setBatchSize] = useState(30);
   const [startRank, setStartRank] = useState(1);
   const [studyType, setStudyType] = useState<"new" | "review" | "custom">(
@@ -35,6 +46,55 @@ export default function StudyPage() {
   useEffect(() => {
     loadVerbs().then(setAllVerbs);
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (mode === "learn") {
+        if (e.key === "ArrowRight" || e.key === "l") {
+          e.preventDefault();
+          if (currentIdx < sessionVerbs.length - 1) {
+            setCurrentIdx((i) => i + 1);
+          }
+        } else if (e.key === "ArrowLeft" || e.key === "h") {
+          e.preventDefault();
+          if (currentIdx > 0) {
+            setCurrentIdx((i) => i - 1);
+          }
+        } else if ((e.key === "Enter" || e.key === " ") && currentIdx === sessionVerbs.length - 1) {
+          e.preventDefault();
+          startRecall();
+        }
+      } else if (mode === "recall") {
+        if (!showAnswer) {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault();
+            setShowAnswer(true);
+          }
+        } else {
+          if (e.key === "1") {
+            e.preventDefault();
+            handleAnswer("wrong");
+          } else if (e.key === "2") {
+            e.preventDefault();
+            handleAnswer("hard");
+          } else if (e.key === "3") {
+            e.preventDefault();
+            handleAnswer("good");
+          } else if (e.key === "4") {
+            e.preventDefault();
+            handleAnswer("easy");
+          }
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mode, currentIdx, showAnswer, sessionVerbs.length]);
 
   const startSession = useCallback(() => {
     let verbs: Verb[] = [];
@@ -73,17 +133,22 @@ export default function StudyPage() {
   }, [allVerbs, studyType, batchSize, startRank]);
 
   const startRecall = () => {
+    setSessionVerbs((prev) => shuffleArray(prev));
     setCurrentIdx(0);
     setShowAnswer(false);
     setResults([]);
     setMode("recall");
   };
 
-  const handleAnswer = (correct: boolean) => {
+  const handleAnswer = (confidence: Confidence) => {
     const verb = sessionVerbs[currentIdx];
-    updateVerbProgress(verb.rank, correct);
+    const correct = confidence !== "wrong";
+    const updated = updateVerbProgress(verb.rank, correct, confidence);
 
-    const newResults = [...results, { rank: verb.rank, correct }];
+    const newResults = [
+      ...results,
+      { rank: verb.rank, correct, confidence, nextReview: updated.nextReview },
+    ];
     setResults(newResults);
 
     const todayLog = getTodayLog();
@@ -99,6 +164,18 @@ export default function StudyPage() {
     } else {
       setMode("results");
     }
+  };
+
+  const retryWrongOnly = () => {
+    const wrongRanks = new Set(
+      results.filter((r) => !r.correct).map((r) => r.rank)
+    );
+    const wrongVerbs = sessionVerbs.filter((v) => wrongRanks.has(v.rank));
+    setSessionVerbs(shuffleArray(wrongVerbs));
+    setCurrentIdx(0);
+    setShowAnswer(false);
+    setResults([]);
+    setMode("recall");
   };
 
   const currentVerb = sessionVerbs[currentIdx];
@@ -186,6 +263,7 @@ export default function StudyPage() {
     const correct = results.filter((r) => r.correct).length;
     const total = results.length;
     const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+    const wrongCount = results.filter((r) => !r.correct).length;
 
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
@@ -201,13 +279,16 @@ export default function StudyPage() {
             </div>
             <Progress value={accuracy} className="h-2 mb-6" />
 
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="space-y-2 max-h-80 overflow-y-auto">
               {results.map((r, i) => {
                 const verb = sessionVerbs.find((v) => v.rank === r.rank);
+                const reviewDate = r.nextReview
+                  ? new Date(r.nextReview).toLocaleDateString()
+                  : null;
                 return (
                   <div
                     key={i}
-                    className="flex items-center justify-between text-sm py-1 border-b last:border-0"
+                    className="flex items-center justify-between text-sm py-1.5 border-b last:border-0"
                   >
                     <span>
                       {verb?.russian_verb}{" "}
@@ -215,9 +296,30 @@ export default function StudyPage() {
                         — {verb?.english_verb}
                       </span>
                     </span>
-                    <Badge variant={r.correct ? "default" : "destructive"}>
-                      {r.correct ? "Correct" : "Wrong"}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {reviewDate && (
+                        <span className="text-xs text-muted-foreground">
+                          Review: {reviewDate}
+                        </span>
+                      )}
+                      <Badge
+                        variant={
+                          r.confidence === "wrong"
+                            ? "destructive"
+                            : r.confidence === "hard"
+                              ? "outline"
+                              : "default"
+                        }
+                      >
+                        {r.confidence === "wrong"
+                          ? "Wrong"
+                          : r.confidence === "hard"
+                            ? "Hard"
+                            : r.confidence === "easy"
+                              ? "Easy"
+                              : "Good"}
+                      </Badge>
+                    </div>
                   </div>
                 );
               })}
@@ -229,15 +331,21 @@ export default function StudyPage() {
           <Button onClick={() => setMode("setup")} variant="outline">
             New Session
           </Button>
+          {wrongCount > 0 && (
+            <Button onClick={retryWrongOnly} variant="outline">
+              Retry Wrong ({wrongCount})
+            </Button>
+          )}
           <Button
             onClick={() => {
+              setSessionVerbs((prev) => shuffleArray(prev));
               setCurrentIdx(0);
               setShowAnswer(false);
               setResults([]);
               setMode("recall");
             }}
           >
-            Retry These Verbs
+            Retry All Verbs
           </Button>
         </div>
       </div>
@@ -276,13 +384,11 @@ export default function StudyPage() {
                 </div>
 
                 <div className="border-t pt-4">
-                  <p className="text-lg">{currentVerb.russian_sentence}</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {currentVerb.sentence_transliteration}
-                  </p>
-                  <p className="text-sm mt-1">
-                    {currentVerb.english_sentence}
-                  </p>
+                  <WordBreakdown
+                    russianSentence={currentVerb.russian_sentence}
+                    transliteration={currentVerb.sentence_transliteration}
+                    englishSentence={currentVerb.english_sentence}
+                  />
                 </div>
 
                 <div className="flex justify-center">
@@ -311,6 +417,10 @@ export default function StudyPage() {
                     </Button>
                   )}
                 </div>
+
+                <p className="text-xs text-center text-muted-foreground">
+                  ← / H previous · → / L next · Enter to start recall
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -346,19 +456,45 @@ export default function StudyPage() {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 justify-center pt-2">
+                    <div className="grid grid-cols-4 gap-2 pt-2">
                       <Button
                         variant="outline"
-                        className="flex-1 border-red-200 text-red-600 hover:bg-red-50"
-                        onClick={() => handleAnswer(false)}
+                        className="border-red-200 text-red-600 hover:bg-red-50"
+                        onClick={() => handleAnswer("wrong")}
                       >
-                        Got it Wrong
+                        <span className="flex flex-col items-center">
+                          <span>Wrong</span>
+                          <span className="text-[10px] opacity-60">1</span>
+                        </span>
                       </Button>
                       <Button
-                        className="flex-1 bg-green-600 hover:bg-green-700"
-                        onClick={() => handleAnswer(true)}
+                        variant="outline"
+                        className="border-orange-200 text-orange-600 hover:bg-orange-50"
+                        onClick={() => handleAnswer("hard")}
                       >
-                        Got it Right
+                        <span className="flex flex-col items-center">
+                          <span>Hard</span>
+                          <span className="text-[10px] opacity-60">2</span>
+                        </span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="border-green-200 text-green-600 hover:bg-green-50"
+                        onClick={() => handleAnswer("good")}
+                      >
+                        <span className="flex flex-col items-center">
+                          <span>Good</span>
+                          <span className="text-[10px] opacity-60">3</span>
+                        </span>
+                      </Button>
+                      <Button
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={() => handleAnswer("easy")}
+                      >
+                        <span className="flex flex-col items-center">
+                          <span>Easy</span>
+                          <span className="text-[10px] opacity-60">4</span>
+                        </span>
                       </Button>
                     </div>
                   </>
@@ -370,6 +506,9 @@ export default function StudyPage() {
                     <Button onClick={() => setShowAnswer(true)} size="lg">
                       Show Answer
                     </Button>
+                    <p className="text-xs text-muted-foreground mt-3">
+                      Space / Enter to reveal · then 1-4 to grade
+                    </p>
                   </div>
                 )}
               </div>

@@ -13,9 +13,12 @@ export function saveProgress(progress: Record<number, VerbProgress>) {
   localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
 }
 
+export type Confidence = "wrong" | "hard" | "good" | "easy";
+
 export function updateVerbProgress(
   rank: number,
-  correct: boolean
+  correct: boolean,
+  confidence?: Confidence
 ): VerbProgress {
   const progress = getProgress();
   const existing = progress[rank] || {
@@ -37,19 +40,28 @@ export function updateVerbProgress(
 
   existing.lastReviewed = now;
 
-  // Simple spaced repetition
+  // Spaced repetition with confidence-based intervals
   const total = existing.correctCount + existing.incorrectCount;
   const accuracy = total > 0 ? existing.correctCount / total : 0;
+  const grade = confidence || (correct ? "good" : "wrong");
 
   if (existing.correctCount >= 5 && accuracy >= 0.8) {
     existing.status = "mastered";
-    existing.nextReview = addDays(now, 7);
+    existing.nextReview =
+      grade === "easy" ? addDays(now, 14) :
+      grade === "hard" ? addDays(now, 3) :
+      addDays(now, 7);
   } else if (existing.correctCount >= 2 && accuracy >= 0.6) {
     existing.status = "reviewing";
-    existing.nextReview = addDays(now, 2);
+    existing.nextReview =
+      grade === "easy" ? addDays(now, 4) :
+      grade === "hard" ? addDays(now, 1) :
+      addDays(now, 2);
   } else if (total > 0) {
     existing.status = "learning";
-    existing.nextReview = addDays(now, 1);
+    existing.nextReview =
+      grade === "easy" ? addDays(now, 2) :
+      addDays(now, 1);
   }
 
   progress[rank] = existing;
