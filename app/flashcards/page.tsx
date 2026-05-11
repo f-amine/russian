@@ -6,64 +6,75 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AudioPlayer } from "@/components/audio-player";
-import { loadVerbs } from "@/lib/verbs";
+import { loadSentences } from "@/lib/sentences";
 import {
   getProgress,
-  updateVerbProgress,
+  updateSentenceProgress,
   updateTodayLog,
   getTodayLog,
 } from "@/lib/progress";
-import type { Verb, VerbProgress } from "@/lib/types";
+import type { Sentence, SentenceProgress } from "@/lib/types";
+import { ISLAND_LABELS, ISLANDS } from "@/lib/types";
 
-type FrontSide = "russian" | "english" | "sentence";
-type SetupState = {
-  mode: "setup";
-};
-type FlashcardState = {
-  mode: "flashcards";
-};
-type ResultsState = {
-  mode: "results";
-};
+type FrontSide = "russian" | "english";
+type SetupState = { mode: "setup" };
+type FlashcardState = { mode: "flashcards" };
+type ResultsState = { mode: "results" };
 type PageState = SetupState | FlashcardState | ResultsState;
 
 export default function FlashcardsPage() {
-  const [allVerbs, setAllVerbs] = useState<Verb[]>([]);
+  const [allSentences, setAllSentences] = useState<Sentence[]>([]);
   const [state, setState] = useState<PageState>({ mode: "setup" });
-  const [deck, setDeck] = useState<Verb[]>([]);
+  const [deck, setDeck] = useState<Sentence[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
-  const [results, setResults] = useState<{ rank: number; correct: boolean }[]>(
-    []
-  );
+  const [results, setResults] = useState<{ id: number; correct: boolean }[]>([]);
 
-  // Settings
-  const [frontSide, setFrontSide] = useState<FrontSide>("russian");
-  const [batchSize, setBatchSize] = useState(30);
-  const [startRank, setStartRank] = useState(1);
+  const [frontSide, setFrontSide] = useState<FrontSide>("english");
+  const [batchSize, setBatchSize] = useState(15);
   const [studyType, setStudyType] = useState<
-    "new" | "review" | "mistakes" | "custom"
+    "new" | "review" | "mistakes" | "island"
   >("new");
+  const [islandFilter, setIslandFilter] = useState<string>("greetings_basics");
 
   useEffect(() => {
-    loadVerbs().then(setAllVerbs);
+    loadSentences().then(setAllSentences);
   }, []);
 
-  // Keyboard shortcuts
+  const handleAnswer = useCallback(
+    (correct: boolean) => {
+      const item = deck[currentIdx];
+      updateSentenceProgress(item.id, correct);
+
+      setResults((prev) => [...prev, { id: item.id, correct }]);
+
+      const todayLog = getTodayLog();
+      updateTodayLog({
+        sentencesStudied: todayLog.sentencesStudied + 1,
+        recallCorrect: todayLog.recallCorrect + (correct ? 1 : 0),
+        recallIncorrect: todayLog.recallIncorrect + (correct ? 0 : 1),
+      });
+
+      if (currentIdx + 1 < deck.length) {
+        setCurrentIdx(currentIdx + 1);
+        setFlipped(false);
+      } else {
+        setState({ mode: "results" });
+      }
+    },
+    [deck, currentIdx]
+  );
+
   useEffect(() => {
     if (state.mode !== "flashcards") return;
 
     const handler = (e: KeyboardEvent) => {
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
-        if (!flipped) {
-          setFlipped(true);
-        }
+        if (!flipped) setFlipped(true);
       } else if (e.key === "ArrowRight" || e.key === "l") {
-        // Correct
         if (flipped) handleAnswer(true);
       } else if (e.key === "ArrowLeft" || e.key === "h") {
-        // Wrong
         if (flipped) handleAnswer(false);
       } else if (e.key === "1") {
         if (flipped) handleAnswer(false);
@@ -74,90 +85,66 @@ export default function FlashcardsPage() {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  });
+  }, [state.mode, flipped, handleAnswer]);
 
   const buildDeck = useCallback(() => {
     const progress = getProgress();
-    let verbs: Verb[] = [];
+    let items: Sentence[] = [];
 
     if (studyType === "new") {
       const studied = new Set(Object.keys(progress).map(Number));
-      verbs = allVerbs.filter((v) => !studied.has(v.rank)).slice(0, batchSize);
+      items = allSentences.filter((s) => !studied.has(s.id)).slice(0, batchSize);
     } else if (studyType === "review") {
       const now = new Date().toISOString();
-      const dueRanks = Object.values(progress)
+      const dueIds = Object.values(progress)
         .filter(
-          (p: VerbProgress) =>
+          (p: SentenceProgress) =>
             p.status !== "mastered" || (p.nextReview && p.nextReview <= now)
         )
-        .map((p: VerbProgress) => p.rank);
-      verbs = allVerbs
-        .filter((v) => dueRanks.includes(v.rank))
+        .map((p: SentenceProgress) => p.id);
+      items = allSentences
+        .filter((s) => dueIds.includes(s.id))
         .slice(0, batchSize);
     } else if (studyType === "mistakes") {
-      // Cards you've gotten wrong more than right
-      const weakRanks = Object.values(progress)
+      const weakIds = Object.values(progress)
         .filter(
-          (p: VerbProgress) =>
-            p.incorrectCount > 0 &&
-            p.incorrectCount >= p.correctCount
+          (p: SentenceProgress) =>
+            p.incorrectCount > 0 && p.incorrectCount >= p.correctCount
         )
         .sort(
-          (a: VerbProgress, b: VerbProgress) =>
+          (a: SentenceProgress, b: SentenceProgress) =>
             b.incorrectCount - a.incorrectCount
         )
-        .map((p: VerbProgress) => p.rank);
-      verbs = allVerbs
-        .filter((v) => weakRanks.includes(v.rank))
+        .map((p: SentenceProgress) => p.id);
+      items = allSentences
+        .filter((s) => weakIds.includes(s.id))
         .slice(0, batchSize);
     } else {
-      verbs = allVerbs
-        .filter((v) => v.rank >= startRank && v.rank < startRank + batchSize);
+      items = allSentences
+        .filter((s) => s.island === islandFilter)
+        .slice(0, batchSize);
     }
 
-    return verbs;
-  }, [allVerbs, studyType, batchSize, startRank]);
+    return items;
+  }, [allSentences, studyType, batchSize, islandFilter]);
 
   const startSession = () => {
-    const verbs = buildDeck();
-    if (verbs.length === 0) {
+    const items = buildDeck();
+    if (items.length === 0) {
       alert("No cards available for this selection.");
       return;
     }
-    setDeck(verbs);
+    setDeck(items);
     setCurrentIdx(0);
     setFlipped(false);
     setResults([]);
     setState({ mode: "flashcards" });
   };
 
-  const handleAnswer = (correct: boolean) => {
-    const verb = deck[currentIdx];
-    updateVerbProgress(verb.rank, correct);
-
-    const newResults = [...results, { rank: verb.rank, correct }];
-    setResults(newResults);
-
-    const todayLog = getTodayLog();
-    updateTodayLog({
-      verbsStudied: todayLog.verbsStudied + 1,
-      recallCorrect: todayLog.recallCorrect + (correct ? 1 : 0),
-      recallIncorrect: todayLog.recallIncorrect + (correct ? 0 : 1),
-    });
-
-    if (currentIdx + 1 < deck.length) {
-      setCurrentIdx(currentIdx + 1);
-      setFlipped(false);
-    } else {
-      setState({ mode: "results" });
-    }
-  };
-
-  const currentVerb = deck[currentIdx];
+  const current = deck[currentIdx];
   const progressPercent =
-    deck.length > 0 ? Math.round(((currentIdx) / deck.length) * 100) : 0;
+    deck.length > 0 ? Math.round((currentIdx / deck.length) * 100) : 0;
 
-  // ─── Setup ───
   if (state.mode === "setup") {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
@@ -170,14 +157,13 @@ export default function FlashcardsPage() {
           <CardContent className="space-y-4">
             <div>
               <label className="text-sm font-medium mb-2 block">
-                Card Front (what you see first)
+                Card Front
               </label>
               <div className="flex gap-2">
                 {(
                   [
-                    { key: "russian", label: "Russian Verb" },
-                    { key: "english", label: "English" },
-                    { key: "sentence", label: "English Sentence" },
+                    { key: "english", label: "English (active recall)" },
+                    { key: "russian", label: "Russian (recognize)" },
                   ] as const
                 ).map((opt) => (
                   <Button
@@ -191,11 +177,9 @@ export default function FlashcardsPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {frontSide === "russian"
-                  ? "You see the Russian verb and try to recall the English meaning"
-                  : frontSide === "english"
-                    ? "You see the English verb and try to produce the Russian (active recall — most effective!)"
-                    : "You see the English sentence and try to say it in Russian"}
+                {frontSide === "english"
+                  ? "See English → try to say in Russian. Most effective."
+                  : "See Russian → recall the meaning."}
               </p>
             </div>
 
@@ -206,10 +190,10 @@ export default function FlashcardsPage() {
               <div className="flex flex-wrap gap-2">
                 {(
                   [
-                    { key: "new", label: "New Verbs" },
+                    { key: "new", label: "New" },
                     { key: "review", label: "Review Due" },
-                    { key: "mistakes", label: "Weakest Cards" },
-                    { key: "custom", label: "Custom Range" },
+                    { key: "mistakes", label: "Weakest" },
+                    { key: "island", label: "By Island" },
                   ] as const
                 ).map((opt) => (
                   <Button
@@ -224,12 +208,29 @@ export default function FlashcardsPage() {
               </div>
             </div>
 
+            {studyType === "island" && (
+              <div>
+                <label className="text-sm font-medium mb-2 block">Island</label>
+                <select
+                  value={islandFilter}
+                  onChange={(e) => setIslandFilter(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+                >
+                  {ISLANDS.map((i) => (
+                    <option key={i} value={i}>
+                      {ISLAND_LABELS[i] || i}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div>
               <label className="text-sm font-medium mb-2 block">
                 Deck Size: {batchSize}
               </label>
-              <div className="flex gap-2">
-                {[10, 20, 30, 50, 100].map((n) => (
+              <div className="flex gap-2 flex-wrap">
+                {[5, 10, 15, 20, 30].map((n) => (
                   <Button
                     key={n}
                     variant={batchSize === n ? "default" : "outline"}
@@ -241,22 +242,6 @@ export default function FlashcardsPage() {
                 ))}
               </div>
             </div>
-
-            {studyType === "custom" && (
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Start from verb #
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={2000}
-                  value={startRank}
-                  onChange={(e) => setStartRank(parseInt(e.target.value) || 1)}
-                  className="h-8 w-24 rounded-lg border border-input bg-background px-2 text-sm"
-                />
-              </div>
-            )}
 
             <Button onClick={startSession} className="w-full" size="lg">
               Start Flashcards
@@ -293,7 +278,6 @@ export default function FlashcardsPage() {
     );
   }
 
-  // ─── Results ───
   if (state.mode === "results") {
     const correct = results.filter((r) => r.correct).length;
     const wrong = results.filter((r) => !r.correct).length;
@@ -316,21 +300,18 @@ export default function FlashcardsPage() {
 
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {results.map((r, i) => {
-                const verb = deck.find((v) => v.rank === r.rank);
+                const item = deck.find((s) => s.id === r.id);
                 return (
                   <div
                     key={i}
-                    className="flex items-center justify-between text-sm py-1.5 border-b last:border-0"
+                    className="flex items-center justify-between text-sm py-1.5 border-b last:border-0 gap-2"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground w-6">
-                        {verb?.rank}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="font-medium truncate">
+                        {item?.russian}
                       </span>
-                      <span className="font-medium">
-                        {verb?.russian_verb}
-                      </span>
-                      <span className="text-muted-foreground">
-                        — {verb?.english_verb}
+                      <span className="text-muted-foreground truncate">
+                        — {item?.english}
                       </span>
                     </div>
                     <Badge variant={r.correct ? "default" : "destructive"}>
@@ -343,28 +324,25 @@ export default function FlashcardsPage() {
           </CardContent>
         </Card>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button onClick={() => setState({ mode: "setup" })} variant="outline">
             New Deck
           </Button>
           {wrong > 0 && (
             <Button
               onClick={() => {
-                // Retry only the wrong ones
-                const wrongRanks = results
+                const wrongIds = results
                   .filter((r) => !r.correct)
-                  .map((r) => r.rank);
-                const retryVerbs = deck.filter((v) =>
-                  wrongRanks.includes(v.rank)
-                );
-                setDeck(retryVerbs);
+                  .map((r) => r.id);
+                const retry = deck.filter((s) => wrongIds.includes(s.id));
+                setDeck(retry);
                 setCurrentIdx(0);
                 setFlipped(false);
                 setResults([]);
                 setState({ mode: "flashcards" });
               }}
             >
-              Retry Wrong Ones ({wrong})
+              Retry Wrong ({wrong})
             </Button>
           )}
           <Button
@@ -383,7 +361,6 @@ export default function FlashcardsPage() {
     );
   }
 
-  // ─── Flashcard ───
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="flex items-center justify-between mb-4">
@@ -395,7 +372,7 @@ export default function FlashcardsPage() {
 
       <Progress value={progressPercent} className="mb-6" />
 
-      {currentVerb && (
+      {current && (
         <div
           className="perspective-1000 mb-6 cursor-pointer"
           onClick={() => !flipped && setFlipped(true)}
@@ -406,46 +383,34 @@ export default function FlashcardsPage() {
             }`}
             style={{ minHeight: "280px" }}
           >
-            {/* Front */}
             <Card
               className={`absolute inset-0 backface-hidden ${
                 flipped ? "pointer-events-none" : ""
               }`}
             >
-              <CardContent className="flex flex-col items-center justify-center h-full min-h-[280px] pt-6">
-                <span className="text-xs text-muted-foreground mb-4">
-                  #{currentVerb.rank} &middot; {currentVerb.category}
-                </span>
+              <CardContent className="flex flex-col items-center justify-center h-full min-h-[280px] pt-6 px-6">
+                <Badge variant="outline" className="mb-4">
+                  {ISLAND_LABELS[current.island] || current.island}
+                </Badge>
 
-                {frontSide === "russian" ? (
-                  <>
-                    <div className="text-4xl font-bold mb-2">
-                      {currentVerb.russian_verb}
-                    </div>
-                    <div className="text-muted-foreground mb-4">
-                      {currentVerb.transliteration}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <AudioPlayer rank={currentVerb.rank} />
-                    </div>
-                  </>
-                ) : frontSide === "english" ? (
-                  <>
-                    <div className="text-3xl font-bold mb-2">
-                      {currentVerb.english_verb}
-                    </div>
-                    <p className="text-sm text-muted-foreground text-center mt-2">
-                      Try to say the Russian verb aloud
-                    </p>
-                  </>
-                ) : (
+                {frontSide === "english" ? (
                   <>
                     <p className="text-xl text-center font-medium mb-2">
-                      &ldquo;{currentVerb.english_sentence}&rdquo;
+                      &ldquo;{current.english}&rdquo;
                     </p>
                     <p className="text-sm text-muted-foreground text-center mt-2">
                       Try to say this in Russian
                     </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold text-center mb-2">
+                      {current.russian}
+                    </div>
+                    <div className="text-muted-foreground text-center mb-4">
+                      {current.transliteration}
+                    </div>
+                    <AudioPlayer id={current.id} />
                   </>
                 )}
 
@@ -455,39 +420,28 @@ export default function FlashcardsPage() {
               </CardContent>
             </Card>
 
-            {/* Back */}
             <Card
               className={`absolute inset-0 [transform:rotateY(180deg)] backface-hidden ${
                 !flipped ? "pointer-events-none" : ""
               }`}
             >
-              <CardContent className="flex flex-col items-center justify-center h-full min-h-[280px] pt-6">
-                <span className="text-xs text-muted-foreground mb-3">
-                  #{currentVerb.rank}
-                </span>
-
-                <div className="text-3xl font-bold mb-1">
-                  {currentVerb.russian_verb}
+              <CardContent className="flex flex-col items-center justify-center h-full min-h-[280px] pt-6 px-6">
+                <div className="text-xl font-bold text-center mb-1">
+                  {current.russian}
                 </div>
-                <div className="text-muted-foreground text-sm mb-1">
-                  {currentVerb.transliteration}
+                <div className="text-muted-foreground text-sm text-center mb-3">
+                  {current.transliteration}
                 </div>
-                <div className="text-lg font-medium mb-3">
-                  {currentVerb.english_verb}
-                </div>
-
                 <div className="border-t w-full pt-3 text-center">
-                  <p className="text-base">{currentVerb.russian_sentence}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {currentVerb.sentence_transliteration}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {currentVerb.english_sentence}
-                  </p>
+                  <p className="text-base">{current.english}</p>
+                  {current.notes && (
+                    <p className="text-xs text-muted-foreground italic mt-2">
+                      {current.notes}
+                    </p>
+                  )}
                 </div>
-
                 <div className="mt-3">
-                  <AudioPlayer rank={currentVerb.rank} />
+                  <AudioPlayer id={current.id} />
                 </div>
               </CardContent>
             </Card>

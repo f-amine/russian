@@ -1,28 +1,28 @@
-import type { VerbProgress, DailyLog } from "./types";
+import type { SentenceProgress, DailyLog } from "./types";
 
-const PROGRESS_KEY = "russian-verb-progress";
+const PROGRESS_KEY = "russian-sentence-progress";
 const DAILY_LOG_KEY = "russian-daily-log";
 
-export function getProgress(): Record<number, VerbProgress> {
+export function getProgress(): Record<number, SentenceProgress> {
   if (typeof window === "undefined") return {};
   const stored = localStorage.getItem(PROGRESS_KEY);
   return stored ? JSON.parse(stored) : {};
 }
 
-export function saveProgress(progress: Record<number, VerbProgress>) {
+export function saveProgress(progress: Record<number, SentenceProgress>) {
   localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
 }
 
 export type Confidence = "wrong" | "hard" | "good" | "easy";
 
-export function updateVerbProgress(
-  rank: number,
+export function updateSentenceProgress(
+  id: number,
   correct: boolean,
   confidence?: Confidence
-): VerbProgress {
+): SentenceProgress {
   const progress = getProgress();
-  const existing = progress[rank] || {
-    rank,
+  const existing = progress[id] || {
+    id,
     status: "new" as const,
     correctCount: 0,
     incorrectCount: 0,
@@ -40,7 +40,6 @@ export function updateVerbProgress(
 
   existing.lastReviewed = now;
 
-  // Spaced repetition with confidence-based intervals
   const total = existing.correctCount + existing.incorrectCount;
   const accuracy = total > 0 ? existing.correctCount / total : 0;
   const grade = confidence || (correct ? "good" : "wrong");
@@ -64,7 +63,7 @@ export function updateVerbProgress(
       addDays(now, 1);
   }
 
-  progress[rank] = existing;
+  progress[id] = existing;
   saveProgress(progress);
   return existing;
 }
@@ -87,13 +86,13 @@ export function getTodayLog(): DailyLog {
   return (
     logs.find((l) => l.date === today) || {
       date: today,
-      verbsStudied: 0,
-      newVerbsLearned: 0,
+      sentencesStudied: 0,
+      newSentencesLearned: 0,
       recallCorrect: 0,
       recallIncorrect: 0,
       listeningMinutes: 0,
       shadowingMinutes: 0,
-      languageIslands: 0,
+      islandsTouched: 0,
     }
   );
 }
@@ -124,14 +123,13 @@ export function getStats() {
   const learning = entries.filter((e) => e.status === "learning").length;
   const totalStudied = entries.length;
 
-  // Calculate streak
   let streak = 0;
   const today = new Date();
   for (let i = 0; i < 365; i++) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
     const dateStr = date.toISOString().split("T")[0];
-    if (logs.find((l) => l.date === dateStr && l.verbsStudied > 0)) {
+    if (logs.find((l) => l.date === dateStr && l.sentencesStudied > 0)) {
       streak++;
     } else if (i > 0) {
       break;

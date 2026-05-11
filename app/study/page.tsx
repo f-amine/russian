@@ -7,15 +7,16 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AudioPlayer } from "@/components/audio-player";
 import { WordBreakdown } from "@/components/word-breakdown";
-import { loadVerbs } from "@/lib/verbs";
+import { loadSentences } from "@/lib/sentences";
 import {
   getProgress,
-  updateVerbProgress,
+  updateSentenceProgress,
   updateTodayLog,
   getTodayLog,
 } from "@/lib/progress";
 import type { Confidence } from "@/lib/progress";
-import type { Verb, VerbProgress } from "@/lib/types";
+import type { Sentence, SentenceProgress } from "@/lib/types";
+import { ISLAND_LABELS, ISLANDS } from "@/lib/types";
 
 type Mode = "setup" | "learn" | "recall" | "results";
 
@@ -29,25 +30,58 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 export default function StudyPage() {
-  const [allVerbs, setAllVerbs] = useState<Verb[]>([]);
+  const [allSentences, setAllSentences] = useState<Sentence[]>([]);
   const [mode, setMode] = useState<Mode>("setup");
-  const [sessionVerbs, setSessionVerbs] = useState<Verb[]>([]);
+  const [sessionItems, setSessionItems] = useState<Sentence[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [results, setResults] = useState<
-    { rank: number; correct: boolean; confidence: Confidence; nextReview: string | null }[]
+    { id: number; correct: boolean; confidence: Confidence; nextReview: string | null }[]
   >([]);
-  const [batchSize, setBatchSize] = useState(30);
-  const [startRank, setStartRank] = useState(1);
-  const [studyType, setStudyType] = useState<"new" | "review" | "custom">(
-    "new"
-  );
+  const [batchSize, setBatchSize] = useState(10);
+  const [studyType, setStudyType] = useState<"new" | "review" | "island">("new");
+  const [islandFilter, setIslandFilter] = useState<string>("greetings_basics");
 
   useEffect(() => {
-    loadVerbs().then(setAllVerbs);
+    loadSentences().then(setAllSentences);
   }, []);
 
-  // Keyboard shortcuts
+  const startRecall = useCallback(() => {
+    setSessionItems((prev) => shuffleArray(prev));
+    setCurrentIdx(0);
+    setShowAnswer(false);
+    setResults([]);
+    setMode("recall");
+  }, []);
+
+  const handleAnswer = useCallback(
+    (confidence: Confidence) => {
+      const item = sessionItems[currentIdx];
+      const correct = confidence !== "wrong";
+      const updated = updateSentenceProgress(item.id, correct, confidence);
+
+      setResults((prev) => [
+        ...prev,
+        { id: item.id, correct, confidence, nextReview: updated.nextReview },
+      ]);
+
+      const todayLog = getTodayLog();
+      updateTodayLog({
+        sentencesStudied: todayLog.sentencesStudied + 1,
+        recallCorrect: todayLog.recallCorrect + (correct ? 1 : 0),
+        recallIncorrect: todayLog.recallIncorrect + (correct ? 0 : 1),
+      });
+
+      if (currentIdx + 1 < sessionItems.length) {
+        setCurrentIdx(currentIdx + 1);
+        setShowAnswer(false);
+      } else {
+        setMode("results");
+      }
+    },
+    [sessionItems, currentIdx]
+  );
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName;
@@ -56,7 +90,7 @@ export default function StudyPage() {
       if (mode === "learn") {
         if (e.key === "ArrowRight" || e.key === "l") {
           e.preventDefault();
-          if (currentIdx < sessionVerbs.length - 1) {
+          if (currentIdx < sessionItems.length - 1) {
             setCurrentIdx((i) => i + 1);
           }
         } else if (e.key === "ArrowLeft" || e.key === "h") {
@@ -64,7 +98,7 @@ export default function StudyPage() {
           if (currentIdx > 0) {
             setCurrentIdx((i) => i - 1);
           }
-        } else if ((e.key === "Enter" || e.key === " ") && currentIdx === sessionVerbs.length - 1) {
+        } else if ((e.key === "Enter" || e.key === " ") && currentIdx === sessionItems.length - 1) {
           e.preventDefault();
           startRecall();
         }
@@ -94,94 +128,60 @@ export default function StudyPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mode, currentIdx, showAnswer, sessionVerbs.length]);
+  }, [mode, currentIdx, showAnswer, sessionItems.length, startRecall, handleAnswer]);
 
   const startSession = useCallback(() => {
-    let verbs: Verb[] = [];
+    let items: Sentence[] = [];
     const progress = getProgress();
 
     if (studyType === "new") {
       const studied = new Set(Object.keys(progress).map(Number));
-      verbs = allVerbs.filter((v) => !studied.has(v.rank)).slice(0, batchSize);
+      items = allSentences.filter((s) => !studied.has(s.id)).slice(0, batchSize);
     } else if (studyType === "review") {
       const now = new Date().toISOString();
-      const dueRanks = Object.values(progress)
+      const dueIds = Object.values(progress)
         .filter(
-          (p: VerbProgress) =>
+          (p: SentenceProgress) =>
             p.status !== "mastered" || (p.nextReview && p.nextReview <= now)
         )
-        .map((p: VerbProgress) => p.rank);
-      verbs = allVerbs
-        .filter((v) => dueRanks.includes(v.rank))
+        .map((p: SentenceProgress) => p.id);
+      items = allSentences
+        .filter((s) => dueIds.includes(s.id))
         .slice(0, batchSize);
     } else {
-      verbs = allVerbs
-        .filter((v) => v.rank >= startRank && v.rank < startRank + batchSize)
+      items = allSentences
+        .filter((s) => s.island === islandFilter)
         .slice(0, batchSize);
     }
 
-    if (verbs.length === 0) {
-      alert("No verbs available for this selection. Try a different option.");
+    if (items.length === 0) {
+      alert("No sentences available for this selection. Try a different option.");
       return;
     }
 
-    setSessionVerbs(verbs);
+    setSessionItems(items);
     setCurrentIdx(0);
     setShowAnswer(false);
     setResults([]);
     setMode("learn");
-  }, [allVerbs, studyType, batchSize, startRank]);
-
-  const startRecall = () => {
-    setSessionVerbs((prev) => shuffleArray(prev));
-    setCurrentIdx(0);
-    setShowAnswer(false);
-    setResults([]);
-    setMode("recall");
-  };
-
-  const handleAnswer = (confidence: Confidence) => {
-    const verb = sessionVerbs[currentIdx];
-    const correct = confidence !== "wrong";
-    const updated = updateVerbProgress(verb.rank, correct, confidence);
-
-    const newResults = [
-      ...results,
-      { rank: verb.rank, correct, confidence, nextReview: updated.nextReview },
-    ];
-    setResults(newResults);
-
-    const todayLog = getTodayLog();
-    updateTodayLog({
-      verbsStudied: todayLog.verbsStudied + 1,
-      recallCorrect: todayLog.recallCorrect + (correct ? 1 : 0),
-      recallIncorrect: todayLog.recallIncorrect + (correct ? 0 : 1),
-    });
-
-    if (currentIdx + 1 < sessionVerbs.length) {
-      setCurrentIdx(currentIdx + 1);
-      setShowAnswer(false);
-    } else {
-      setMode("results");
-    }
-  };
+  }, [allSentences, studyType, batchSize, islandFilter]);
 
   const retryWrongOnly = () => {
-    const wrongRanks = new Set(
-      results.filter((r) => !r.correct).map((r) => r.rank)
+    const wrongIds = new Set(
+      results.filter((r) => !r.correct).map((r) => r.id)
     );
-    const wrongVerbs = sessionVerbs.filter((v) => wrongRanks.has(v.rank));
-    setSessionVerbs(shuffleArray(wrongVerbs));
+    const wrong = sessionItems.filter((s) => wrongIds.has(s.id));
+    setSessionItems(shuffleArray(wrong));
     setCurrentIdx(0);
     setShowAnswer(false);
     setResults([]);
     setMode("recall");
   };
 
-  const currentVerb = sessionVerbs[currentIdx];
+  const current = sessionItems[currentIdx];
   const progressPercent =
-    sessionVerbs.length > 0
-      ? Math.round(((currentIdx + 1) / sessionVerbs.length) * 100)
+    sessionItems.length > 0
+      ? Math.round(((currentIdx + 1) / sessionItems.length) * 100)
       : 0;
 
   if (mode === "setup") {
@@ -198,8 +198,8 @@ export default function StudyPage() {
               <label className="text-sm font-medium mb-2 block">
                 Study Type
               </label>
-              <div className="flex gap-2">
-                {(["new", "review", "custom"] as const).map((t) => (
+              <div className="flex gap-2 flex-wrap">
+                {(["new", "review", "island"] as const).map((t) => (
                   <Button
                     key={t}
                     variant={studyType === t ? "default" : "outline"}
@@ -207,21 +207,40 @@ export default function StudyPage() {
                     onClick={() => setStudyType(t)}
                   >
                     {t === "new"
-                      ? "New Verbs"
+                      ? "New Sentences"
                       : t === "review"
                         ? "Review Due"
-                        : "Custom Range"}
+                        : "By Island"}
                   </Button>
                 ))}
               </div>
             </div>
 
+            {studyType === "island" && (
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Island
+                </label>
+                <select
+                  value={islandFilter}
+                  onChange={(e) => setIslandFilter(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+                >
+                  {ISLANDS.map((i) => (
+                    <option key={i} value={i}>
+                      {ISLAND_LABELS[i] || i}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div>
               <label className="text-sm font-medium mb-2 block">
                 Batch Size: {batchSize}
               </label>
-              <div className="flex gap-2">
-                {[10, 20, 30, 50, 100].map((n) => (
+              <div className="flex gap-2 flex-wrap">
+                {[5, 10, 15, 20, 30].map((n) => (
                   <Button
                     key={n}
                     variant={batchSize === n ? "default" : "outline"}
@@ -233,22 +252,6 @@ export default function StudyPage() {
                 ))}
               </div>
             </div>
-
-            {studyType === "custom" && (
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Start from verb #
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={2000}
-                  value={startRank}
-                  onChange={(e) => setStartRank(parseInt(e.target.value) || 1)}
-                  className="h-8 w-24 rounded-lg border border-input bg-background px-2 text-sm"
-                />
-              </div>
-            )}
 
             <Button onClick={startSession} className="w-full" size="lg">
               Start Session
@@ -281,22 +284,22 @@ export default function StudyPage() {
 
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {results.map((r, i) => {
-                const verb = sessionVerbs.find((v) => v.rank === r.rank);
+                const item = sessionItems.find((s) => s.id === r.id);
                 const reviewDate = r.nextReview
                   ? new Date(r.nextReview).toLocaleDateString()
                   : null;
                 return (
                   <div
                     key={i}
-                    className="flex items-center justify-between text-sm py-1.5 border-b last:border-0"
+                    className="flex items-center justify-between text-sm py-1.5 border-b last:border-0 gap-2"
                   >
-                    <span>
-                      {verb?.russian_verb}{" "}
+                    <span className="flex-1 min-w-0 truncate">
+                      {item?.russian}{" "}
                       <span className="text-muted-foreground">
-                        — {verb?.english_verb}
+                        — {item?.english}
                       </span>
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       {reviewDate && (
                         <span className="text-xs text-muted-foreground">
                           Review: {reviewDate}
@@ -327,7 +330,7 @@ export default function StudyPage() {
           </CardContent>
         </Card>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button onClick={() => setMode("setup")} variant="outline">
             New Session
           </Button>
@@ -338,14 +341,14 @@ export default function StudyPage() {
           )}
           <Button
             onClick={() => {
-              setSessionVerbs((prev) => shuffleArray(prev));
+              setSessionItems((prev) => shuffleArray(prev));
               setCurrentIdx(0);
               setShowAnswer(false);
               setResults([]);
               setMode("recall");
             }}
           >
-            Retry All Verbs
+            Retry All
           </Button>
         </div>
       </div>
@@ -359,40 +362,45 @@ export default function StudyPage() {
           {mode === "learn" ? "Learn" : "Active Recall"}
         </h1>
         <span className="text-sm text-muted-foreground">
-          {currentIdx + 1} / {sessionVerbs.length}
+          {currentIdx + 1} / {sessionItems.length}
         </span>
       </div>
 
       <Progress value={progressPercent} className="mb-6" />
 
-      {currentVerb && (
+      {current && (
         <Card className="mb-6">
           <CardContent className="pt-6">
             {mode === "learn" ? (
               <div className="space-y-4">
                 <div className="text-center">
-                  <div className="text-3xl font-bold mb-1">
-                    {currentVerb.russian_verb}
+                  <Badge variant="outline" className="mb-3">
+                    {ISLAND_LABELS[current.island] || current.island}
+                  </Badge>
+                  <div className="text-2xl font-bold mb-1">
+                    {current.russian}
                   </div>
                   <div className="text-muted-foreground">
-                    {currentVerb.transliteration}
+                    {current.transliteration}
                   </div>
-                  <div className="text-lg mt-2">{currentVerb.english_verb}</div>
-                  <Badge variant="outline" className="mt-2">
-                    {currentVerb.category}
-                  </Badge>
+                  <div className="text-lg mt-3">{current.english}</div>
+                  {current.notes && (
+                    <p className="text-xs text-muted-foreground italic mt-2">
+                      {current.notes}
+                    </p>
+                  )}
                 </div>
 
                 <div className="border-t pt-4">
                   <WordBreakdown
-                    russianSentence={currentVerb.russian_sentence}
-                    transliteration={currentVerb.sentence_transliteration}
-                    englishSentence={currentVerb.english_sentence}
+                    russianSentence={current.russian}
+                    transliteration={current.transliteration}
+                    englishSentence={current.english}
                   />
                 </div>
 
                 <div className="flex justify-center">
-                  <AudioPlayer rank={currentVerb.rank} />
+                  <AudioPlayer id={current.id} />
                 </div>
 
                 <div className="flex justify-between">
@@ -407,7 +415,7 @@ export default function StudyPage() {
                   >
                     Previous
                   </Button>
-                  {currentIdx < sessionVerbs.length - 1 ? (
+                  {currentIdx < sessionItems.length - 1 ? (
                     <Button onClick={() => setCurrentIdx(currentIdx + 1)}>
                       Next
                     </Button>
@@ -426,33 +434,29 @@ export default function StudyPage() {
               <div className="space-y-4">
                 <div className="text-center py-4">
                   <p className="text-sm text-muted-foreground mb-2">
-                    Translate to Russian:
+                    Say this in Russian:
                   </p>
-                  <div className="text-2xl font-semibold">
-                    {currentVerb.english_verb}
+                  <div className="text-xl font-semibold">
+                    &ldquo;{current.english}&rdquo;
                   </div>
-                  <p className="text-muted-foreground mt-2">
-                    &quot;{currentVerb.english_sentence}&quot;
-                  </p>
+                  {current.notes && (
+                    <p className="text-xs text-muted-foreground italic mt-2">
+                      {current.notes}
+                    </p>
+                  )}
                 </div>
 
                 {showAnswer ? (
                   <>
                     <div className="border-t pt-4 text-center">
-                      <div className="text-3xl font-bold mb-1">
-                        {currentVerb.russian_verb}
+                      <div className="text-2xl font-bold mb-1">
+                        {current.russian}
                       </div>
                       <div className="text-muted-foreground">
-                        {currentVerb.transliteration}
+                        {current.transliteration}
                       </div>
-                      <p className="text-lg mt-3">
-                        {currentVerb.russian_sentence}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {currentVerb.sentence_transliteration}
-                      </p>
                       <div className="mt-3">
-                        <AudioPlayer rank={currentVerb.rank} />
+                        <AudioPlayer id={current.id} />
                       </div>
                     </div>
 

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "audio:gen": "node scripts/generate-audio.mjs",
+    "audio:setup": "python3 -m venv scripts/.venv && scripts/.venv/bin/pip install edge-tts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

@@ -1,28 +1,40 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
-export function AudioPlayer({ rank }: { rank: number }) {
+function audioSrc(id: number) {
+  return `/audio/${String(id).padStart(4, "0")}.mp3`;
+}
+
+export function AudioPlayer({ id }: { id: number }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const rankRef = useRef(rank);
+  const idRef = useRef(id);
   const [playing, setPlaying] = useState(false);
+  const [missing, setMissing] = useState(false);
 
   const play = useCallback(() => {
-    const src = `/audio/${String(rank).padStart(4, "0")}.mp3`;
-    if (!audioRef.current || rankRef.current !== rank) {
+    const src = audioSrc(id);
+    if (!audioRef.current || idRef.current !== id) {
       if (audioRef.current) {
         audioRef.current.pause();
       }
       audioRef.current = new Audio(src);
       audioRef.current.onended = () => setPlaying(false);
-      audioRef.current.onerror = () => setPlaying(false);
-      rankRef.current = rank;
+      audioRef.current.onerror = () => {
+        setPlaying(false);
+        setMissing(true);
+      };
+      idRef.current = id;
+      setMissing(false);
     }
     audioRef.current.currentTime = 0;
-    audioRef.current.play();
+    audioRef.current.play().catch(() => {
+      setMissing(true);
+      setPlaying(false);
+    });
     setPlaying(true);
-  }, [rank]);
+  }, [id]);
 
   return (
     <Button
@@ -30,7 +42,8 @@ export function AudioPlayer({ rank }: { rank: number }) {
       size="icon-xs"
       onClick={play}
       disabled={playing}
-      title="Play audio"
+      title={missing ? "No audio for this sentence yet" : "Play audio"}
+      className={missing ? "opacity-30" : ""}
     >
       {playing ? (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -47,81 +60,87 @@ export function AudioPlayer({ rank }: { rank: number }) {
 }
 
 export function PlaylistPlayer({
-  ranks,
+  ids,
   speed = 1,
   loop = false,
   shuffle = false,
   onTrackChange,
   onLoopComplete,
 }: {
-  ranks: number[];
+  ids: number[];
   speed?: number;
   loop?: boolean;
   shuffle?: boolean;
-  onTrackChange?: (rank: number, index: number) => void;
+  onTrackChange?: (id: number, index: number) => void;
   onLoopComplete?: (count: number) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
   const idxRef = useRef(0);
-  const ranksRef = useRef(ranks);
+  const idsRef = useRef(ids);
   const loopRef = useRef(loop);
   const shuffleRef = useRef(shuffle);
   const loopCountRef = useRef(0);
-  ranksRef.current = ranks;
-  loopRef.current = loop;
-  shuffleRef.current = shuffle;
+  const speedRef = useRef(speed);
+  const onTrackChangeRef = useRef(onTrackChange);
+  const onLoopCompleteRef = useRef(onLoopComplete);
+  const playTrackRef = useRef<(idx: number) => void>(() => {});
 
-  const playTrack = useCallback(
-    (idx: number) => {
-      if (idx >= ranksRef.current.length) {
-        if (loopRef.current) {
-          loopCountRef.current++;
-          onLoopComplete?.(loopCountRef.current);
-          if (shuffleRef.current) {
-            // Shuffle the ranks array in place for next loop
-            for (let i = ranksRef.current.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [ranksRef.current[i], ranksRef.current[j]] = [ranksRef.current[j], ranksRef.current[i]];
-            }
+  useEffect(() => {
+    idsRef.current = ids;
+    loopRef.current = loop;
+    shuffleRef.current = shuffle;
+    speedRef.current = speed;
+    onTrackChangeRef.current = onTrackChange;
+    onLoopCompleteRef.current = onLoopComplete;
+  });
+
+  const playTrack = useCallback((idx: number) => {
+    if (idx >= idsRef.current.length) {
+      if (loopRef.current) {
+        loopCountRef.current++;
+        onLoopCompleteRef.current?.(loopCountRef.current);
+        if (shuffleRef.current) {
+          for (let i = idsRef.current.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [idsRef.current[i], idsRef.current[j]] = [idsRef.current[j], idsRef.current[i]];
           }
-          const nextIdx = 0;
-          idxRef.current = nextIdx;
-          setCurrentIdx(nextIdx);
-          setTimeout(() => playTrack(nextIdx), 500);
-          return;
         }
-        setPlaying(false);
+        const nextIdx = 0;
+        idxRef.current = nextIdx;
+        setCurrentIdx(nextIdx);
+        setTimeout(() => playTrackRef.current(nextIdx), 500);
         return;
       }
-      const rank = ranksRef.current[idx];
-      const src = `/audio/${String(rank).padStart(4, "0")}.mp3`;
+      setPlaying(false);
+      return;
+    }
+    const id = idsRef.current[idx];
+    const src = audioSrc(id);
 
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      const audio = new Audio(src);
-      audio.playbackRate = speed;
-      audio.onended = () => {
-        const next = idxRef.current + 1;
-        idxRef.current = next;
-        setCurrentIdx(next);
-        playTrack(next);
-      };
-      audio.onerror = () => {
-        const next = idxRef.current + 1;
-        idxRef.current = next;
-        setCurrentIdx(next);
-        playTrack(next);
-      };
-      audioRef.current = audio;
-      audio.play();
-      setCurrentIdx(idx);
-      onTrackChange?.(rank, idx);
-    },
-    [speed, onTrackChange]
-  );
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    const audio = new Audio(src);
+    audio.playbackRate = speedRef.current;
+    const advance = () => {
+      const next = idxRef.current + 1;
+      idxRef.current = next;
+      setCurrentIdx(next);
+      playTrackRef.current(next);
+    };
+    audio.onended = advance;
+    audio.onerror = advance;
+    audioRef.current = audio;
+    audio.play().catch(advance);
+    setCurrentIdx(idx);
+    onTrackChangeRef.current?.(id, idx);
+  }, []);
+
+  useEffect(() => {
+    playTrackRef.current = playTrack;
+  }, [playTrack]);
 
   const toggle = useCallback(() => {
     if (playing) {
@@ -135,7 +154,7 @@ export function PlaylistPlayer({
 
   const next = useCallback(() => {
     const n = idxRef.current + 1;
-    if (n < ranksRef.current.length) {
+    if (n < idsRef.current.length) {
       idxRef.current = n;
       playTrack(n);
     }
@@ -188,8 +207,8 @@ export function PlaylistPlayer({
         </svg>
       </Button>
       <span className="text-xs text-muted-foreground ml-2">
-        {currentIdx + 1} / {ranks.length} &middot; {speed}x
-        {loop && " &middot; loop"}
+        {currentIdx + 1} / {ids.length} &middot; {speed}x
+        {loop && " · loop"}
       </span>
     </div>
   );

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { getStats, getTodayLog } from "@/lib/progress";
+import { loadSentences } from "@/lib/sentences";
 import type { DailyLog } from "@/lib/types";
 
 export default function Dashboard() {
@@ -19,24 +20,26 @@ export default function Dashboard() {
     logs: [] as DailyLog[],
   });
   const [today, setToday] = useState<DailyLog | null>(null);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStats(getStats());
     setToday(getTodayLog());
+    loadSentences().then((s) => setTotal(s.length));
   }, []);
 
-  const totalVerbs = 2000;
-  const overallPercent = Math.round((stats.totalStudied / totalVerbs) * 100);
-  const masteredPercent = Math.round((stats.mastered / totalVerbs) * 100);
+  const overallPercent = total > 0 ? Math.round((stats.totalStudied / total) * 100) : 0;
+  const masteredPercent = total > 0 ? Math.round((stats.mastered / total) * 100) : 0;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">
-          Russian Learning Dashboard
+          Russian Language Islands
         </h1>
         <p className="text-muted-foreground mt-1">
-          2,000 verbs &middot; 12-month fluency plan
+          Personalized sentences &middot; sentence-first method
         </p>
       </div>
 
@@ -44,14 +47,14 @@ export default function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Verbs Studied
+              Sentences Studied
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalStudied}</div>
             <Progress value={overallPercent} className="mt-2" />
             <p className="text-xs text-muted-foreground mt-1">
-              {overallPercent}% of 2,000
+              {overallPercent}% of {total}
             </p>
           </CardContent>
         </Card>
@@ -115,16 +118,16 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <div className="text-sm text-muted-foreground">
-                  Verbs Studied
+                  Sentences Studied
                 </div>
                 <div className="text-xl font-semibold">
-                  {today.verbsStudied}
+                  {today.sentencesStudied}
                 </div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">New Learned</div>
                 <div className="text-xl font-semibold">
-                  {today.newVerbsLearned}
+                  {today.newSentencesLearned}
                 </div>
               </div>
               <div>
@@ -158,38 +161,26 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-3 mb-8">
         <Card className="hover:ring-2 hover:ring-primary/20 transition-all">
           <CardHeader>
-            <CardTitle>Daily Routine</CardTitle>
+            <CardTitle>The 3-Step System</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">1.</span>
-              <span className="text-sm">
-                <strong>15 min</strong> — New vocabulary with mnemonics
-              </span>
+          <CardContent className="space-y-3 text-sm">
+            <div>
+              <strong>1. Language Islands</strong>
+              <p className="text-muted-foreground">
+                Full sentences from your real life, grouped by topic.
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg">2.</span>
-              <span className="text-sm">
-                <strong>15 min</strong> — Read + listen to sentences
-              </span>
+            <div>
+              <strong>2. Audio Flood + Shadowing</strong>
+              <p className="text-muted-foreground">
+                Listen on repeat. Speak along out loud.
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg">3.</span>
-              <span className="text-sm">
-                <strong>15 min</strong> — Active recall (EN → RU)
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg">4.</span>
-              <span className="text-sm">
-                <strong>5 min</strong> — Shadowing pronunciation
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg">5.</span>
-              <span className="text-sm">
-                <strong>1-2 hr</strong> — Passive listening (during day)
-              </span>
+            <div>
+              <strong>3. Active Recall</strong>
+              <p className="text-muted-foreground">
+                English → Russian aloud, from memory. The hard part.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -203,13 +194,13 @@ export default function Dashboard() {
               <Link href="/study">Start Study Session</Link>
             </Button>
             <Button asChild className="w-full justify-start" variant="outline">
-              <Link href="/listen">Listen to Sentences</Link>
+              <Link href="/listen">Listen + Shadow</Link>
             </Button>
             <Button asChild className="w-full justify-start" variant="outline">
-              <Link href="/verbs">Browse Verbs</Link>
+              <Link href="/flashcards">Flashcards</Link>
             </Button>
             <Button asChild className="w-full justify-start" variant="outline">
-              <Link href="/plan">View Full Plan</Link>
+              <Link href="/browse">Browse Islands</Link>
             </Button>
           </CardContent>
         </Card>
@@ -220,20 +211,20 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>
-              <strong className="text-foreground">Vocabulary &gt; Grammar.</strong>{" "}
-              3,000 words + no grammar beats 500 words + perfect grammar.
+              <strong className="text-foreground">Sentences not words.</strong>{" "}
+              Grammar is a side effect.
             </p>
             <p>
-              <strong className="text-foreground">Mnemonics are mandatory.</strong>{" "}
-              Russian has almost no English cognates.
+              <strong className="text-foreground">Your life, not textbook.</strong>{" "}
+              Only learn what you&apos;d actually say.
             </p>
             <p>
-              <strong className="text-foreground">Active recall.</strong>{" "}
-              English → Russian aloud is the most effective exercise.
+              <strong className="text-foreground">Speak out loud daily.</strong>{" "}
+              Mouth needs practice, not just ears.
             </p>
             <p>
-              <strong className="text-foreground">Listen every day.</strong>{" "}
-              Repetition is the key to mastery.
+              <strong className="text-foreground">Struggle is the point.</strong>{" "}
+              Active recall &gt; passive review.
             </p>
           </CardContent>
         </Card>
