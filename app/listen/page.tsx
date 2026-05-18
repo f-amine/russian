@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import {
+  Repeat,
+  Shuffle,
+  Gauge,
+  Headphones,
+} from "lucide-react";
+import { PageCard } from "@/components/page-card";
 import { PlaylistPlayer } from "@/components/audio-player";
 import { loadSentences } from "@/lib/sentences";
 import { updateTodayLog, getTodayLog } from "@/lib/progress";
 import type { Sentence } from "@/lib/types";
 import { ISLAND_LABELS, ISLANDS } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export default function ListenPage() {
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -54,170 +59,177 @@ export default function ListenPage() {
     return () => clearInterval(interval);
   }, [listeningStarted]);
 
-  const islandOptions = [
-    { value: "all", label: `All sentences (${sentences.length})` },
-    ...ISLANDS.map((i) => ({
-      value: i,
-      label: `${ISLAND_LABELS[i] || i} (${sentences.filter((s) => s.island === i).length})`,
-    })),
-  ];
-
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="text-2xl font-bold mb-2">Listening & Shadowing</h1>
-      <p className="text-muted-foreground text-sm mb-6">
-        Loop sentences. Repeat aloud as you hear them. Speed up as they become familiar.
-      </p>
-
-      <div className="grid gap-4 md:grid-cols-[1fr_300px]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Player</span>
-                <div className="flex gap-1">
-                  {[0.75, 1, 1.25, 1.5, 2].map((s) => (
-                    <Button
-                      key={s}
-                      variant={speed === s ? "default" : "outline"}
-                      size="xs"
-                      onClick={() => setSpeed(s)}
-                    >
-                      {s}x
-                    </Button>
-                  ))}
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {ids.length > 0 ? (
-                <div className="space-y-3">
-                  <PlaylistPlayer
-                    ids={ids}
-                    speed={speed}
-                    loop={loop}
-                    shuffle={shuffle}
-                    onTrackChange={onTrackChange}
-                    onLoopComplete={(count) => setLoopCount(count)}
-                  />
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant={loop ? "default" : "outline"}
-                      size="xs"
-                      onClick={() => setLoop(!loop)}
-                      title="Loop playlist"
-                    >
-                      Loop
-                    </Button>
-                    <Button
-                      variant={shuffle ? "default" : "outline"}
-                      size="xs"
-                      onClick={() => setShuffle(!shuffle)}
-                      title="Shuffle order"
-                    >
-                      Shuffle
-                    </Button>
-                    {loopCount > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        Loops: {loopCount}
-                      </span>
+    <div className="flex h-full w-full">
+      <PageCard
+        backHref="/"
+        title="Shadow & Loop"
+        subtitle="Audio flood · hands-free practice"
+      >
+        <div className="mx-auto grid max-w-3xl gap-4">
+          {/* Player + current sentence */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <Headphones className="h-4 w-4 text-blue-500" />
+                Player
+              </div>
+              <div className="flex items-center gap-1">
+                <Gauge className="h-3.5 w-3.5 text-slate-400" />
+                {[0.75, 1, 1.25, 1.5, 2].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setSpeed(s)}
+                    className={cn(
+                      "rounded-md px-2 py-1 text-xs font-semibold transition",
+                      speed === s
+                        ? "bg-blue-500 text-white shadow-sm shadow-blue-500/20"
+                        : "text-slate-500 hover:bg-slate-100"
                     )}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Loading sentences...
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {current && (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center space-y-3">
-                  <Badge variant="outline">
-                    {ISLAND_LABELS[current.island] || current.island}
-                  </Badge>
-                  <div>
-                    <div className="text-xl font-bold">{current.russian}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {current.transliteration}
-                    </div>
-                  </div>
-
-                  {showTranslation && (
-                    <div className="border-t pt-3">
-                      <p className="text-base">{current.english}</p>
-                      {current.notes && (
-                        <p className="text-xs text-muted-foreground italic mt-2">
-                          {current.notes}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowTranslation(!showTranslation)}
                   >
-                    {showTranslation ? "Hide" : "Show"} Translation
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Island</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <select
-                value={island}
-                onChange={(e) => {
-                  setIsland(e.target.value);
-                  setCurrent(null);
-                }}
-                className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
-              >
-                {islandOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
+                    {s}x
+                  </button>
                 ))}
-              </select>
-            </CardContent>
-          </Card>
+              </div>
+            </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Tips</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground space-y-2">
-              <p>
-                <strong>Shadow out loud:</strong> repeat each sentence
-                immediately after you hear it.
-              </p>
-              <p>
-                <strong>Speed up:</strong> once familiar, bump to 1.25x or 1.5x
-                so real speech feels slow.
-              </p>
-              <p>
-                <strong>Predict:</strong> after enough loops you should know the
-                next sentence before it plays.
-              </p>
-              <p>
-                <strong>Dead time:</strong> commute, dishes, gym warmup —
-                listening time is free.
-              </p>
-            </CardContent>
-          </Card>
+            {ids.length > 0 ? (
+              <div className="space-y-3">
+                <PlaylistPlayer
+                  ids={ids}
+                  speed={speed}
+                  loop={loop}
+                  shuffle={shuffle}
+                  onTrackChange={onTrackChange}
+                  onLoopComplete={(count) => setLoopCount(count)}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <ToggleChip
+                    active={loop}
+                    onClick={() => setLoop(!loop)}
+                    icon={<Repeat className="h-3.5 w-3.5" />}
+                    label="Loop"
+                  />
+                  <ToggleChip
+                    active={shuffle}
+                    onClick={() => setShuffle(!shuffle)}
+                    icon={<Shuffle className="h-3.5 w-3.5" />}
+                    label="Shuffle"
+                  />
+                  {loopCount > 0 && (
+                    <span className="text-xs text-slate-500">
+                      Loops: <b className="text-slate-700">{loopCount}</b>
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400">Loading sentences…</p>
+            )}
+          </div>
+
+          {/* Now playing */}
+          {current && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+              <span className="inline-block rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
+                {ISLAND_LABELS[current.island] || current.island}
+              </span>
+              <div className="mt-3 text-2xl font-bold tracking-tight text-slate-900">
+                {current.russian}
+              </div>
+              <div className="mt-0.5 text-sm text-slate-500">
+                {current.transliteration}
+              </div>
+              {showTranslation && (
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <p className="text-base text-slate-700">{current.english}</p>
+                  {current.notes && (
+                    <p className="mt-2 text-xs italic text-slate-400">
+                      {current.notes}
+                    </p>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => setShowTranslation(!showTranslation)}
+                className="mt-3 text-xs font-medium text-blue-500 transition hover:text-blue-600"
+              >
+                {showTranslation ? "Hide" : "Show"} translation
+              </button>
+            </div>
+          )}
+
+          {/* Island picker */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+              Island
+            </div>
+            <select
+              value={island}
+              onChange={(e) => {
+                setIsland(e.target.value);
+                setCurrent(null);
+              }}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-blue-300 focus:outline-none"
+            >
+              <option value="all">All sentences ({sentences.length})</option>
+              {ISLANDS.map((i) => (
+                <option key={i} value={i}>
+                  {ISLAND_LABELS[i] || i} ({sentences.filter((s) => s.island === i).length})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tips */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+              Shadowing Tips
+            </div>
+            <ul className="space-y-2 text-[13px] leading-snug text-slate-600">
+              <li>
+                <b className="text-slate-800">Shadow out loud:</b> repeat each sentence half a beat behind the speaker.
+              </li>
+              <li>
+                <b className="text-slate-800">Speed up:</b> once familiar, bump to 1.25× or 1.5× so real speech feels slow.
+              </li>
+              <li>
+                <b className="text-slate-800">Predict:</b> after enough loops you should know the next line before it plays.
+              </li>
+              <li>
+                <b className="text-slate-800">Dead time:</b> commute, dishes, warmup — listening time is free.
+              </li>
+            </ul>
+          </div>
         </div>
-      </div>
+      </PageCard>
     </div>
+  );
+}
+
+function ToggleChip({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+        active
+          ? "border-blue-500 bg-blue-500 text-white shadow-sm shadow-blue-500/20"
+          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

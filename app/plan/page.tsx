@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { PageCard } from "@/components/page-card";
 
 export default function PlanPage() {
   const [content, setContent] = useState("");
@@ -13,19 +14,19 @@ export default function PlanPage() {
       .then(setContent);
   }, []);
 
-  if (!content) {
-    return (
-      <div className="mx-auto max-w-4xl px-4 py-8">
-        <p className="text-muted-foreground">Loading plan...</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <article className="markdown-content">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-      </article>
+    <div className="flex h-full w-full">
+      <PageCard backHref="/" title="Action Plan" subtitle="Roadmap & method">
+        {content ? (
+          <article className="markdown-content mx-auto max-w-3xl px-2 pb-6 text-slate-700">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          </article>
+        ) : (
+          <div className="grid h-full place-items-center text-sm text-slate-400">
+            Loading plan…
+          </div>
+        )}
+      </PageCard>
     </div>
   );
 }

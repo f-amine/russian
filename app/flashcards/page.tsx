@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  RotateCcw,
+} from "lucide-react";
+import { PageCard } from "@/components/page-card";
 import { AudioPlayer } from "@/components/audio-player";
 import { loadSentences } from "@/lib/sentences";
 import {
@@ -15,12 +18,10 @@ import {
 } from "@/lib/progress";
 import type { Sentence, SentenceProgress } from "@/lib/types";
 import { ISLAND_LABELS, ISLANDS } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type FrontSide = "russian" | "english";
-type SetupState = { mode: "setup" };
-type FlashcardState = { mode: "flashcards" };
-type ResultsState = { mode: "results" };
-type PageState = SetupState | FlashcardState | ResultsState;
+type PageState = { mode: "setup" | "flashcards" | "results" };
 
 export default function FlashcardsPage() {
   const [allSentences, setAllSentences] = useState<Sentence[]>([]);
@@ -45,7 +46,6 @@ export default function FlashcardsPage() {
     (correct: boolean) => {
       const item = deck[currentIdx];
       updateSentenceProgress(item.id, correct);
-
       setResults((prev) => [...prev, { id: item.id, correct }]);
 
       const todayLog = getTodayLog();
@@ -67,7 +67,6 @@ export default function FlashcardsPage() {
 
   useEffect(() => {
     if (state.mode !== "flashcards") return;
-
     const handler = (e: KeyboardEvent) => {
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
@@ -76,13 +75,8 @@ export default function FlashcardsPage() {
         if (flipped) handleAnswer(true);
       } else if (e.key === "ArrowLeft" || e.key === "h") {
         if (flipped) handleAnswer(false);
-      } else if (e.key === "1") {
-        if (flipped) handleAnswer(false);
-      } else if (e.key === "2" || e.key === "3") {
-        if (flipped) handleAnswer(true);
       }
     };
-
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [state.mode, flipped, handleAnswer]);
@@ -102,27 +96,18 @@ export default function FlashcardsPage() {
             p.status !== "mastered" || (p.nextReview && p.nextReview <= now)
         )
         .map((p: SentenceProgress) => p.id);
-      items = allSentences
-        .filter((s) => dueIds.includes(s.id))
-        .slice(0, batchSize);
+      items = allSentences.filter((s) => dueIds.includes(s.id)).slice(0, batchSize);
     } else if (studyType === "mistakes") {
       const weakIds = Object.values(progress)
         .filter(
           (p: SentenceProgress) =>
             p.incorrectCount > 0 && p.incorrectCount >= p.correctCount
         )
-        .sort(
-          (a: SentenceProgress, b: SentenceProgress) =>
-            b.incorrectCount - a.incorrectCount
-        )
-        .map((p: SentenceProgress) => p.id);
-      items = allSentences
-        .filter((s) => weakIds.includes(s.id))
-        .slice(0, batchSize);
+        .sort((a, b) => b.incorrectCount - a.incorrectCount)
+        .map((p) => p.id);
+      items = allSentences.filter((s) => weakIds.includes(s.id)).slice(0, batchSize);
     } else {
-      items = allSentences
-        .filter((s) => s.island === islandFilter)
-        .slice(0, batchSize);
+      items = allSentences.filter((s) => s.island === islandFilter).slice(0, batchSize);
     }
 
     return items;
@@ -145,348 +130,433 @@ export default function FlashcardsPage() {
   const progressPercent =
     deck.length > 0 ? Math.round((currentIdx / deck.length) * 100) : 0;
 
-  if (state.mode === "setup") {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">Flashcards</h1>
-
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Configure Deck</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Card Front
-              </label>
-              <div className="flex gap-2">
-                {(
-                  [
-                    { key: "english", label: "English (active recall)" },
-                    { key: "russian", label: "Russian (recognize)" },
-                  ] as const
-                ).map((opt) => (
-                  <Button
-                    key={opt.key}
-                    variant={frontSide === opt.key ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFrontSide(opt.key)}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {frontSide === "english"
-                  ? "See English → try to say in Russian. Most effective."
-                  : "See Russian → recall the meaning."}
-              </p>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Card Selection
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    { key: "new", label: "New" },
-                    { key: "review", label: "Review Due" },
-                    { key: "mistakes", label: "Weakest" },
-                    { key: "island", label: "By Island" },
-                  ] as const
-                ).map((opt) => (
-                  <Button
-                    key={opt.key}
-                    variant={studyType === opt.key ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setStudyType(opt.key)}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {studyType === "island" && (
-              <div>
-                <label className="text-sm font-medium mb-2 block">Island</label>
-                <select
-                  value={islandFilter}
-                  onChange={(e) => setIslandFilter(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
-                >
-                  {ISLANDS.map((i) => (
-                    <option key={i} value={i}>
-                      {ISLAND_LABELS[i] || i}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Deck Size: {batchSize}
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                {[5, 10, 15, 20, 30].map((n) => (
-                  <Button
-                    key={n}
-                    variant={batchSize === n ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setBatchSize(n)}
-                  >
-                    {n}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <Button onClick={startSession} className="w-full" size="lg">
-              Start Flashcards
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Keyboard Shortcuts</CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-muted-foreground space-y-1">
-            <p>
-              <kbd className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono">Space</kbd>{" "}
-              or{" "}
-              <kbd className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono">Enter</kbd>{" "}
-              — Flip card
-            </p>
-            <p>
-              <kbd className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono">→</kbd>{" "}
-              or{" "}
-              <kbd className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono">L</kbd>{" "}
-              — Got it right
-            </p>
-            <p>
-              <kbd className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono">←</kbd>{" "}
-              or{" "}
-              <kbd className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono">H</kbd>{" "}
-              — Got it wrong
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (state.mode === "results") {
-    const correct = results.filter((r) => r.correct).length;
-    const wrong = results.filter((r) => !r.correct).length;
-    const total = results.length;
-    const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
-
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">Deck Complete!</h1>
-
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="text-center mb-6">
-              <div className="text-5xl font-bold mb-2">{accuracy}%</div>
-              <p className="text-muted-foreground">
-                {correct} right &middot; {wrong} wrong &middot; {total} total
-              </p>
-            </div>
-            <Progress value={accuracy} className="h-2 mb-6" />
-
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {results.map((r, i) => {
-                const item = deck.find((s) => s.id === r.id);
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between text-sm py-1.5 border-b last:border-0 gap-2"
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="font-medium truncate">
-                        {item?.russian}
-                      </span>
-                      <span className="text-muted-foreground truncate">
-                        — {item?.english}
-                      </span>
-                    </div>
-                    <Badge variant={r.correct ? "default" : "destructive"}>
-                      {r.correct ? "Right" : "Wrong"}
-                    </Badge>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="flex gap-2 flex-wrap">
-          <Button onClick={() => setState({ mode: "setup" })} variant="outline">
-            New Deck
-          </Button>
-          {wrong > 0 && (
-            <Button
-              onClick={() => {
-                const wrongIds = results
-                  .filter((r) => !r.correct)
-                  .map((r) => r.id);
-                const retry = deck.filter((s) => wrongIds.includes(s.id));
-                setDeck(retry);
-                setCurrentIdx(0);
-                setFlipped(false);
-                setResults([]);
-                setState({ mode: "flashcards" });
-              }}
-            >
-              Retry Wrong ({wrong})
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => {
+  return (
+    <div className="flex h-full w-full">
+      <PageCard
+        backHref="/"
+        title={
+          state.mode === "setup"
+            ? "Flashcards"
+            : state.mode === "results"
+              ? "Deck Complete"
+              : "Flashcards"
+        }
+        subtitle={
+          state.mode === "flashcards"
+            ? `${currentIdx + 1} of ${deck.length}`
+            : state.mode === "setup"
+              ? "Configure deck"
+              : "Review your run"
+        }
+      >
+        {state.mode === "setup" ? (
+          <SetupView
+            studyType={studyType}
+            setStudyType={setStudyType}
+            islandFilter={islandFilter}
+            setIslandFilter={setIslandFilter}
+            batchSize={batchSize}
+            setBatchSize={setBatchSize}
+            frontSide={frontSide}
+            setFrontSide={setFrontSide}
+            onStart={startSession}
+          />
+        ) : state.mode === "results" ? (
+          <ResultsView
+            results={results}
+            deck={deck}
+            onNew={() => setState({ mode: "setup" })}
+            onRetryWrong={() => {
+              const wrongIds = results.filter((r) => !r.correct).map((r) => r.id);
+              const retry = deck.filter((s) => wrongIds.includes(s.id));
+              setDeck(retry);
               setCurrentIdx(0);
               setFlipped(false);
               setResults([]);
               setState({ mode: "flashcards" });
             }}
-          >
-            Retry All
-          </Button>
-        </div>
-      </div>
-    );
-  }
+            onRetryAll={() => {
+              setCurrentIdx(0);
+              setFlipped(false);
+              setResults([]);
+              setState({ mode: "flashcards" });
+            }}
+          />
+        ) : current ? (
+          <SessionView
+            current={current}
+            frontSide={frontSide}
+            flipped={flipped}
+            setFlipped={setFlipped}
+            onAnswer={handleAnswer}
+            progressPercent={progressPercent}
+          />
+        ) : null}
+      </PageCard>
+    </div>
+  );
+}
 
+/* -------- subviews -------- */
+
+function SetupView({
+  studyType,
+  setStudyType,
+  islandFilter,
+  setIslandFilter,
+  batchSize,
+  setBatchSize,
+  frontSide,
+  setFrontSide,
+  onStart,
+}: {
+  studyType: "new" | "review" | "mistakes" | "island";
+  setStudyType: (v: "new" | "review" | "mistakes" | "island") => void;
+  islandFilter: string;
+  setIslandFilter: (v: string) => void;
+  batchSize: number;
+  setBatchSize: (v: number) => void;
+  frontSide: FrontSide;
+  setFrontSide: (v: FrontSide) => void;
+  onStart: () => void;
+}) {
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold">Flashcards</h1>
-        <span className="text-sm text-muted-foreground">
-          {currentIdx + 1} / {deck.length}
-        </span>
+    <div className="mx-auto max-w-xl space-y-5">
+      <Section title="Card Front">
+        <div className="grid grid-cols-2 gap-2">
+          <ChoiceChip
+            active={frontSide === "english"}
+            onClick={() => setFrontSide("english")}
+          >
+            English (active recall)
+          </ChoiceChip>
+          <ChoiceChip
+            active={frontSide === "russian"}
+            onClick={() => setFrontSide("russian")}
+          >
+            Russian (recognize)
+          </ChoiceChip>
+        </div>
+      </Section>
+
+      <Section title="Card Selection">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {(
+            [
+              { key: "new", label: "New" },
+              { key: "review", label: "Review Due" },
+              { key: "mistakes", label: "Weakest" },
+              { key: "island", label: "By Island" },
+            ] as const
+          ).map((t) => (
+            <ChoiceChip
+              key={t.key}
+              active={studyType === t.key}
+              onClick={() => setStudyType(t.key)}
+            >
+              {t.label}
+            </ChoiceChip>
+          ))}
+        </div>
+      </Section>
+
+      {studyType === "island" && (
+        <Section title="Island">
+          <select
+            value={islandFilter}
+            onChange={(e) => setIslandFilter(e.target.value)}
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-blue-300 focus:outline-none"
+          >
+            {ISLANDS.map((i) => (
+              <option key={i} value={i}>
+                {ISLAND_LABELS[i] || i}
+              </option>
+            ))}
+          </select>
+        </Section>
+      )}
+
+      <Section title={`Deck Size: ${batchSize}`}>
+        <div className="grid grid-cols-5 gap-2">
+          {[5, 10, 15, 20, 30].map((n) => (
+            <ChoiceChip
+              key={n}
+              active={batchSize === n}
+              onClick={() => setBatchSize(n)}
+            >
+              {n}
+            </ChoiceChip>
+          ))}
+        </div>
+      </Section>
+
+      <button
+        onClick={onStart}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-500 py-3.5 text-sm font-semibold text-white shadow-md shadow-blue-500/30 transition hover:bg-blue-600"
+      >
+        Start Flashcards
+        <ArrowRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function SessionView({
+  current,
+  frontSide,
+  flipped,
+  setFlipped,
+  onAnswer,
+  progressPercent,
+}: {
+  current: Sentence;
+  frontSide: FrontSide;
+  flipped: boolean;
+  setFlipped: (v: boolean) => void;
+  onAnswer: (correct: boolean) => void;
+  progressPercent: number;
+}) {
+  return (
+    <div className="mx-auto max-w-xl">
+      <div className="mb-5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200/70">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-500 transition-all"
+          style={{ width: `${progressPercent}%` }}
+        />
       </div>
 
-      <Progress value={progressPercent} className="mb-6" />
-
-      {current && (
+      <div
+        onClick={() => !flipped && setFlipped(true)}
+        className="perspective-1000 mb-5 cursor-pointer"
+      >
         <div
-          className="perspective-1000 mb-6 cursor-pointer"
-          onClick={() => !flipped && setFlipped(true)}
+          className={cn(
+            "relative transition-transform duration-500 transform-style-3d",
+            flipped && "[transform:rotateY(180deg)]"
+          )}
+          style={{ minHeight: "320px" }}
         >
+          {/* Front */}
           <div
-            className={`relative transition-transform duration-500 transform-style-3d ${
-              flipped ? "[transform:rotateY(180deg)]" : ""
-            }`}
-            style={{ minHeight: "280px" }}
+            className={cn(
+              "absolute inset-0 flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-sm backface-hidden",
+              flipped && "pointer-events-none"
+            )}
           >
-            <Card
-              className={`absolute inset-0 backface-hidden ${
-                flipped ? "pointer-events-none" : ""
-              }`}
-            >
-              <CardContent className="flex flex-col items-center justify-center h-full min-h-[280px] pt-6 px-6">
-                <Badge variant="outline" className="mb-4">
-                  {ISLAND_LABELS[current.island] || current.island}
-                </Badge>
-
-                {frontSide === "english" ? (
-                  <>
-                    <p className="text-xl text-center font-medium mb-2">
-                      &ldquo;{current.english}&rdquo;
-                    </p>
-                    <p className="text-sm text-muted-foreground text-center mt-2">
-                      Try to say this in Russian
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold text-center mb-2">
-                      {current.russian}
-                    </div>
-                    <div className="text-muted-foreground text-center mb-4">
-                      {current.transliteration}
-                    </div>
-                    <AudioPlayer id={current.id} />
-                  </>
-                )}
-
-                <p className="text-xs text-muted-foreground mt-6">
-                  Tap card or press Space to flip
+            <span className="mb-4 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
+              {ISLAND_LABELS[current.island] || current.island}
+            </span>
+            {frontSide === "english" ? (
+              <>
+                <div className="text-xl font-semibold text-slate-900">
+                  “{current.english}”
+                </div>
+                <p className="mt-3 text-xs text-slate-500">
+                  Try to say in Russian — tap to flip
                 </p>
-              </CardContent>
-            </Card>
-
-            <Card
-              className={`absolute inset-0 [transform:rotateY(180deg)] backface-hidden ${
-                !flipped ? "pointer-events-none" : ""
-              }`}
-            >
-              <CardContent className="flex flex-col items-center justify-center h-full min-h-[280px] pt-6 px-6">
-                <div className="text-xl font-bold text-center mb-1">
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-slate-900">
                   {current.russian}
                 </div>
-                <div className="text-muted-foreground text-sm text-center mb-3">
+                <div className="mt-1 text-sm text-slate-500">
                   {current.transliteration}
                 </div>
-                <div className="border-t w-full pt-3 text-center">
-                  <p className="text-base">{current.english}</p>
-                  {current.notes && (
-                    <p className="text-xs text-muted-foreground italic mt-2">
-                      {current.notes}
-                    </p>
-                  )}
-                </div>
-                <div className="mt-3">
+                <div className="mt-4">
                   <AudioPlayer id={current.id} />
                 </div>
-              </CardContent>
-            </Card>
+                <p className="mt-3 text-xs text-slate-500">Tap to flip</p>
+              </>
+            )}
+          </div>
+
+          {/* Back */}
+          <div
+            className={cn(
+              "absolute inset-0 flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-sm backface-hidden [transform:rotateY(180deg)]",
+              !flipped && "pointer-events-none"
+            )}
+          >
+            <div className="text-2xl font-bold text-slate-900">
+              {current.russian}
+            </div>
+            <div className="mt-1 text-sm text-slate-500">
+              {current.transliteration}
+            </div>
+            <div className="mt-3 border-t border-slate-100 pt-3 text-base text-slate-700">
+              {current.english}
+            </div>
+            {current.notes && (
+              <div className="mt-2 text-xs italic text-slate-400">
+                {current.notes}
+              </div>
+            )}
+            <div className="mt-4">
+              <AudioPlayer id={current.id} />
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {flipped && (
-        <div className="flex gap-3 justify-center mb-6">
-          <Button
-            variant="outline"
-            size="lg"
-            className="flex-1 max-w-40 border-red-200 text-red-600 hover:bg-red-50"
-            onClick={() => handleAnswer(false)}
+      {flipped ? (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => onAnswer(false)}
+            className="flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-100"
           >
-            <span className="mr-1">←</span> Wrong
-          </Button>
-          <Button
-            size="lg"
-            className="flex-1 max-w-40 bg-green-600 hover:bg-green-700"
-            onClick={() => handleAnswer(true)}
+            <ArrowLeft className="h-4 w-4" />
+            Wrong
+          </button>
+          <button
+            onClick={() => onAnswer(true)}
+            className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-500/30 transition hover:bg-emerald-600"
           >
-            Right <span className="ml-1">→</span>
-          </Button>
+            Right
+            <ArrowRight className="h-4 w-4" />
+          </button>
         </div>
-      )}
-
-      <div className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setState({ mode: "setup" })}
-          className="text-muted-foreground"
-        >
-          ← Back to setup
-        </Button>
-        <div className="text-xs text-muted-foreground">
-          <kbd className="px-1 py-0.5 rounded bg-muted font-mono">Space</kbd>{" "}
-          flip &middot;{" "}
-          <kbd className="px-1 py-0.5 rounded bg-muted font-mono">←</kbd>{" "}
-          wrong &middot;{" "}
-          <kbd className="px-1 py-0.5 rounded bg-muted font-mono">→</kbd>{" "}
+      ) : (
+        <p className="text-center text-xs text-slate-500">
+          <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600">
+            Space
+          </kbd>{" "}
+          flip ·{" "}
+          <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600">
+            ←
+          </kbd>{" "}
+          wrong ·{" "}
+          <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600">
+            →
+          </kbd>{" "}
           right
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ResultsView({
+  results,
+  deck,
+  onNew,
+  onRetryWrong,
+  onRetryAll,
+}: {
+  results: { id: number; correct: boolean }[];
+  deck: Sentence[];
+  onNew: () => void;
+  onRetryWrong: () => void;
+  onRetryAll: () => void;
+}) {
+  const correct = results.filter((r) => r.correct).length;
+  const wrong = results.filter((r) => !r.correct).length;
+  const total = results.length;
+  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+
+  return (
+    <div className="mx-auto max-w-xl">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <CheckCircle2 className="mx-auto mb-3 h-8 w-8 text-emerald-500" />
+        <div className="text-5xl font-bold tabular-nums text-slate-900">
+          {accuracy}%
+        </div>
+        <div className="mt-1 text-sm text-slate-500">
+          {correct} right · {wrong} wrong · {total} total
+        </div>
+        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full bg-emerald-500"
+            style={{ width: `${accuracy}%` }}
+          />
         </div>
       </div>
+
+      <div className="mt-4 max-h-80 space-y-1.5 overflow-y-auto">
+        {results.map((r, i) => {
+          const item = deck.find((s) => s.id === r.id);
+          return (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+            >
+              <span className="min-w-0 flex-1 truncate text-slate-700">
+                <b className="font-semibold text-slate-900">{item?.russian}</b>{" "}
+                <span className="text-slate-500">— {item?.english}</span>
+              </span>
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                  r.correct
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-red-100 text-red-700"
+                )}
+              >
+                {r.correct ? "Right" : "Wrong"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button
+          onClick={onNew}
+          className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          New Deck
+        </button>
+        {wrong > 0 && (
+          <button
+            onClick={onRetryWrong}
+            className="flex-1 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-medium text-amber-700 transition hover:bg-amber-100"
+          >
+            Retry Wrong ({wrong})
+          </button>
+        )}
+        <button
+          onClick={onRetryAll}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/30 transition hover:bg-blue-600"
+        >
+          <RotateCcw className="h-4 w-4" />
+          Retry All
+        </button>
+      </div>
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ChoiceChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "rounded-xl border px-3 py-2.5 text-sm font-medium transition",
+        active
+          ? "border-blue-500 bg-blue-500 text-white shadow-md shadow-blue-500/20"
+          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+      )}
+    >
+      {children}
+    </button>
   );
 }

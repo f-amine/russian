@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "/", label: "Dashboard" },
   { href: "/browse", label: "Browse" },
+  { href: "/sentences", label: "Sentences" },
   { href: "/study", label: "Study" },
   { href: "/flashcards", label: "Flashcards" },
   { href: "/listen", label: "Listen" },
@@ -15,6 +16,8 @@ const links = [
 
 export function Nav() {
   const pathname = usePathname();
+
+  if (pathname?.startsWith("/sentences")) return null;
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

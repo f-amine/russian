@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  RotateCcw,
+  Settings as SettingsIcon,
+} from "lucide-react";
+import { PageCard } from "@/components/page-card";
 import { AudioPlayer } from "@/components/audio-player";
 import { WordBreakdown } from "@/components/word-breakdown";
 import { loadSentences } from "@/lib/sentences";
@@ -17,6 +21,7 @@ import {
 import type { Confidence } from "@/lib/progress";
 import type { Sentence, SentenceProgress } from "@/lib/types";
 import { ISLAND_LABELS, ISLANDS } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type Mode = "setup" | "learn" | "recall" | "results";
 
@@ -90,15 +95,14 @@ export default function StudyPage() {
       if (mode === "learn") {
         if (e.key === "ArrowRight" || e.key === "l") {
           e.preventDefault();
-          if (currentIdx < sessionItems.length - 1) {
-            setCurrentIdx((i) => i + 1);
-          }
+          if (currentIdx < sessionItems.length - 1) setCurrentIdx((i) => i + 1);
         } else if (e.key === "ArrowLeft" || e.key === "h") {
           e.preventDefault();
-          if (currentIdx > 0) {
-            setCurrentIdx((i) => i - 1);
-          }
-        } else if ((e.key === "Enter" || e.key === " ") && currentIdx === sessionItems.length - 1) {
+          if (currentIdx > 0) setCurrentIdx((i) => i - 1);
+        } else if (
+          (e.key === "Enter" || e.key === " ") &&
+          currentIdx === sessionItems.length - 1
+        ) {
           e.preventDefault();
           startRecall();
         }
@@ -109,19 +113,10 @@ export default function StudyPage() {
             setShowAnswer(true);
           }
         } else {
-          if (e.key === "1") {
-            e.preventDefault();
-            handleAnswer("wrong");
-          } else if (e.key === "2") {
-            e.preventDefault();
-            handleAnswer("hard");
-          } else if (e.key === "3") {
-            e.preventDefault();
-            handleAnswer("good");
-          } else if (e.key === "4") {
-            e.preventDefault();
-            handleAnswer("easy");
-          }
+          if (e.key === "1") handleAnswer("wrong");
+          else if (e.key === "2") handleAnswer("hard");
+          else if (e.key === "3") handleAnswer("good");
+          else if (e.key === "4") handleAnswer("easy");
         }
       }
     }
@@ -145,13 +140,9 @@ export default function StudyPage() {
             p.status !== "mastered" || (p.nextReview && p.nextReview <= now)
         )
         .map((p: SentenceProgress) => p.id);
-      items = allSentences
-        .filter((s) => dueIds.includes(s.id))
-        .slice(0, batchSize);
+      items = allSentences.filter((s) => dueIds.includes(s.id)).slice(0, batchSize);
     } else {
-      items = allSentences
-        .filter((s) => s.island === islandFilter)
-        .slice(0, batchSize);
+      items = allSentences.filter((s) => s.island === islandFilter).slice(0, batchSize);
     }
 
     if (items.length === 0) {
@@ -167,9 +158,7 @@ export default function StudyPage() {
   }, [allSentences, studyType, batchSize, islandFilter]);
 
   const retryWrongOnly = () => {
-    const wrongIds = new Set(
-      results.filter((r) => !r.correct).map((r) => r.id)
-    );
+    const wrongIds = new Set(results.filter((r) => !r.correct).map((r) => r.id));
     const wrong = sessionItems.filter((s) => wrongIds.has(s.id));
     setSessionItems(shuffleArray(wrong));
     setCurrentIdx(0);
@@ -184,351 +173,488 @@ export default function StudyPage() {
       ? Math.round(((currentIdx + 1) / sessionItems.length) * 100)
       : 0;
 
-  if (mode === "setup") {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">Study Session</h1>
-
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Configure Session</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Study Type
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                {(["new", "review", "island"] as const).map((t) => (
-                  <Button
-                    key={t}
-                    variant={studyType === t ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setStudyType(t)}
-                  >
-                    {t === "new"
-                      ? "New Sentences"
-                      : t === "review"
-                        ? "Review Due"
-                        : "By Island"}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {studyType === "island" && (
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Island
-                </label>
-                <select
-                  value={islandFilter}
-                  onChange={(e) => setIslandFilter(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
-                >
-                  {ISLANDS.map((i) => (
-                    <option key={i} value={i}>
-                      {ISLAND_LABELS[i] || i}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Batch Size: {batchSize}
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                {[5, 10, 15, 20, 30].map((n) => (
-                  <Button
-                    key={n}
-                    variant={batchSize === n ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setBatchSize(n)}
-                  >
-                    {n}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <Button onClick={startSession} className="w-full" size="lg">
-              Start Session
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (mode === "results") {
-    const correct = results.filter((r) => r.correct).length;
-    const total = results.length;
-    const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
-    const wrongCount = results.filter((r) => !r.correct).length;
-
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">Session Complete!</h1>
-
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="text-center mb-6">
-              <div className="text-5xl font-bold mb-2">{accuracy}%</div>
-              <p className="text-muted-foreground">
-                {correct} correct out of {total}
-              </p>
-            </div>
-            <Progress value={accuracy} className="h-2 mb-6" />
-
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {results.map((r, i) => {
-                const item = sessionItems.find((s) => s.id === r.id);
-                const reviewDate = r.nextReview
-                  ? new Date(r.nextReview).toLocaleDateString()
-                  : null;
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between text-sm py-1.5 border-b last:border-0 gap-2"
-                  >
-                    <span className="flex-1 min-w-0 truncate">
-                      {item?.russian}{" "}
-                      <span className="text-muted-foreground">
-                        — {item?.english}
-                      </span>
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {reviewDate && (
-                        <span className="text-xs text-muted-foreground">
-                          Review: {reviewDate}
-                        </span>
-                      )}
-                      <Badge
-                        variant={
-                          r.confidence === "wrong"
-                            ? "destructive"
-                            : r.confidence === "hard"
-                              ? "outline"
-                              : "default"
-                        }
-                      >
-                        {r.confidence === "wrong"
-                          ? "Wrong"
-                          : r.confidence === "hard"
-                            ? "Hard"
-                            : r.confidence === "easy"
-                              ? "Easy"
-                              : "Good"}
-                      </Badge>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="flex gap-2 flex-wrap">
-          <Button onClick={() => setMode("setup")} variant="outline">
-            New Session
-          </Button>
-          {wrongCount > 0 && (
-            <Button onClick={retryWrongOnly} variant="outline">
-              Retry Wrong ({wrongCount})
-            </Button>
-          )}
-          <Button
-            onClick={() => {
+  return (
+    <div className="flex h-full w-full">
+      <PageCard
+        backHref="/"
+        title={mode === "setup" ? "Study Session" : mode === "results" ? "Session Complete" : mode === "learn" ? "Learn" : "Active Recall"}
+        subtitle={
+          mode === "setup"
+            ? "Configure your batch"
+            : mode === "results"
+              ? "Review your run"
+              : `${currentIdx + 1} of ${sessionItems.length}`
+        }
+        actions={
+          mode !== "setup" &&
+          mode !== "results" && (
+            <button
+              onClick={() => setMode("setup")}
+              className="grid h-10 w-10 place-items-center rounded-xl bg-white text-slate-500 shadow-sm transition hover:text-slate-700"
+              aria-label="Restart"
+            >
+              <SettingsIcon className="h-4 w-4" />
+            </button>
+          )
+        }
+      >
+        {mode === "setup" ? (
+          <SetupView
+            studyType={studyType}
+            setStudyType={setStudyType}
+            islandFilter={islandFilter}
+            setIslandFilter={setIslandFilter}
+            batchSize={batchSize}
+            setBatchSize={setBatchSize}
+            onStart={startSession}
+          />
+        ) : mode === "results" ? (
+          <ResultsView
+            results={results}
+            sessionItems={sessionItems}
+            onNew={() => setMode("setup")}
+            onRetryWrong={retryWrongOnly}
+            onRetryAll={() => {
               setSessionItems((prev) => shuffleArray(prev));
               setCurrentIdx(0);
               setShowAnswer(false);
               setResults([]);
               setMode("recall");
             }}
-          >
-            Retry All
-          </Button>
-        </div>
-      </div>
-    );
-  }
+          />
+        ) : (
+          <SessionView
+            mode={mode}
+            current={current}
+            progressPercent={progressPercent}
+            currentIdx={currentIdx}
+            total={sessionItems.length}
+            showAnswer={showAnswer}
+            setShowAnswer={setShowAnswer}
+            onAnswer={handleAnswer}
+            onPrev={() => currentIdx > 0 && setCurrentIdx(currentIdx - 1)}
+            onNext={() =>
+              currentIdx < sessionItems.length - 1 && setCurrentIdx(currentIdx + 1)
+            }
+            onStartRecall={startRecall}
+          />
+        )}
+      </PageCard>
+    </div>
+  );
+}
 
+/* ---------------- subviews ---------------- */
+
+function SetupView({
+  studyType,
+  setStudyType,
+  islandFilter,
+  setIslandFilter,
+  batchSize,
+  setBatchSize,
+  onStart,
+}: {
+  studyType: "new" | "review" | "island";
+  setStudyType: (v: "new" | "review" | "island") => void;
+  islandFilter: string;
+  setIslandFilter: (v: string) => void;
+  batchSize: number;
+  setBatchSize: (v: number) => void;
+  onStart: () => void;
+}) {
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold">
-          {mode === "learn" ? "Learn" : "Active Recall"}
-        </h1>
-        <span className="text-sm text-muted-foreground">
-          {currentIdx + 1} / {sessionItems.length}
-        </span>
-      </div>
+    <div className="mx-auto max-w-xl space-y-5">
+      <Section title="Study Type">
+        <div className="grid grid-cols-3 gap-2">
+          {(
+            [
+              { key: "new", label: "New" },
+              { key: "review", label: "Review Due" },
+              { key: "island", label: "By Island" },
+            ] as const
+          ).map((t) => (
+            <ChoiceChip
+              key={t.key}
+              active={studyType === t.key}
+              onClick={() => setStudyType(t.key)}
+            >
+              {t.label}
+            </ChoiceChip>
+          ))}
+        </div>
+      </Section>
 
-      <Progress value={progressPercent} className="mb-6" />
-
-      {current && (
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            {mode === "learn" ? (
-              <div className="space-y-4">
-                <div className="text-center">
-                  <Badge variant="outline" className="mb-3">
-                    {ISLAND_LABELS[current.island] || current.island}
-                  </Badge>
-                  <div className="text-2xl font-bold mb-1">
-                    {current.russian}
-                  </div>
-                  <div className="text-muted-foreground">
-                    {current.transliteration}
-                  </div>
-                  <div className="text-lg mt-3">{current.english}</div>
-                  {current.notes && (
-                    <p className="text-xs text-muted-foreground italic mt-2">
-                      {current.notes}
-                    </p>
-                  )}
-                </div>
-
-                <div className="border-t pt-4">
-                  <WordBreakdown
-                    russianSentence={current.russian}
-                    transliteration={current.transliteration}
-                    englishSentence={current.english}
-                  />
-                </div>
-
-                <div className="flex justify-center">
-                  <AudioPlayer id={current.id} />
-                </div>
-
-                <div className="flex justify-between">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      if (currentIdx > 0) {
-                        setCurrentIdx(currentIdx - 1);
-                      }
-                    }}
-                    disabled={currentIdx === 0}
-                  >
-                    Previous
-                  </Button>
-                  {currentIdx < sessionItems.length - 1 ? (
-                    <Button onClick={() => setCurrentIdx(currentIdx + 1)}>
-                      Next
-                    </Button>
-                  ) : (
-                    <Button onClick={startRecall}>
-                      Start Active Recall →
-                    </Button>
-                  )}
-                </div>
-
-                <p className="text-xs text-center text-muted-foreground">
-                  ← / H previous · → / L next · Enter to start recall
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="text-center py-4">
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Say this in Russian:
-                  </p>
-                  <div className="text-xl font-semibold">
-                    &ldquo;{current.english}&rdquo;
-                  </div>
-                  {current.notes && (
-                    <p className="text-xs text-muted-foreground italic mt-2">
-                      {current.notes}
-                    </p>
-                  )}
-                </div>
-
-                {showAnswer ? (
-                  <>
-                    <div className="border-t pt-4 text-center">
-                      <div className="text-2xl font-bold mb-1">
-                        {current.russian}
-                      </div>
-                      <div className="text-muted-foreground">
-                        {current.transliteration}
-                      </div>
-                      <div className="mt-3">
-                        <AudioPlayer id={current.id} />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-2 pt-2">
-                      <Button
-                        variant="outline"
-                        className="border-red-200 text-red-600 hover:bg-red-50"
-                        onClick={() => handleAnswer("wrong")}
-                      >
-                        <span className="flex flex-col items-center">
-                          <span>Wrong</span>
-                          <span className="text-[10px] opacity-60">1</span>
-                        </span>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="border-orange-200 text-orange-600 hover:bg-orange-50"
-                        onClick={() => handleAnswer("hard")}
-                      >
-                        <span className="flex flex-col items-center">
-                          <span>Hard</span>
-                          <span className="text-[10px] opacity-60">2</span>
-                        </span>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="border-green-200 text-green-600 hover:bg-green-50"
-                        onClick={() => handleAnswer("good")}
-                      >
-                        <span className="flex flex-col items-center">
-                          <span>Good</span>
-                          <span className="text-[10px] opacity-60">3</span>
-                        </span>
-                      </Button>
-                      <Button
-                        className="bg-green-600 hover:bg-green-700"
-                        onClick={() => handleAnswer("easy")}
-                      >
-                        <span className="flex flex-col items-center">
-                          <span>Easy</span>
-                          <span className="text-[10px] opacity-60">4</span>
-                        </span>
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Try to say it aloud in Russian, then check
-                    </p>
-                    <Button onClick={() => setShowAnswer(true)} size="lg">
-                      Show Answer
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Space / Enter to reveal · then 1-4 to grade
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {studyType === "island" && (
+        <Section title="Island">
+          <select
+            value={islandFilter}
+            onChange={(e) => setIslandFilter(e.target.value)}
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm focus:border-blue-300 focus:outline-none"
+          >
+            {ISLANDS.map((i) => (
+              <option key={i} value={i}>
+                {ISLAND_LABELS[i] || i}
+              </option>
+            ))}
+          </select>
+        </Section>
       )}
 
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setMode("setup")}
-        className="text-muted-foreground"
+      <Section title={`Batch Size: ${batchSize}`}>
+        <div className="grid grid-cols-5 gap-2">
+          {[5, 10, 15, 20, 30].map((n) => (
+            <ChoiceChip
+              key={n}
+              active={batchSize === n}
+              onClick={() => setBatchSize(n)}
+            >
+              {n}
+            </ChoiceChip>
+          ))}
+        </div>
+      </Section>
+
+      <button
+        onClick={onStart}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-500 py-3.5 text-sm font-semibold text-white shadow-md shadow-blue-500/30 transition hover:bg-blue-600"
       >
-        ← Back to setup
-      </Button>
+        Start Session
+        <ArrowRight className="h-4 w-4" />
+      </button>
     </div>
+  );
+}
+
+function SessionView({
+  mode,
+  current,
+  progressPercent,
+  currentIdx,
+  total,
+  showAnswer,
+  setShowAnswer,
+  onAnswer,
+  onPrev,
+  onNext,
+  onStartRecall,
+}: {
+  mode: Mode;
+  current: Sentence | undefined;
+  progressPercent: number;
+  currentIdx: number;
+  total: number;
+  showAnswer: boolean;
+  setShowAnswer: (v: boolean) => void;
+  onAnswer: (c: Confidence) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onStartRecall: () => void;
+}) {
+  if (!current) return null;
+
+  return (
+    <div className="mx-auto max-w-xl">
+      <div className="mb-6">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200/70">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-500 transition-all"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+        <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">
+            {ISLAND_LABELS[current.island] || current.island}
+          </span>
+          <span>
+            {currentIdx + 1} / {total}
+          </span>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-sm">
+        {mode === "learn" ? (
+          <>
+            <div className="text-2xl font-bold text-slate-900">
+              {current.russian}
+            </div>
+            <div className="mt-1 text-sm text-slate-500">
+              {current.transliteration}
+            </div>
+            <div className="mt-3 text-base text-slate-700">
+              {current.english}
+            </div>
+            {current.notes && (
+              <div className="mt-2 text-xs italic text-slate-400">
+                {current.notes}
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-center">
+              <AudioPlayer id={current.id} />
+            </div>
+
+            <div className="mt-6 border-t border-slate-100 pt-5 text-left">
+              <WordBreakdown
+                russianSentence={current.russian}
+                transliteration={current.transliteration}
+                englishSentence={current.english}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+              Say this in Russian
+            </div>
+            <div className="mt-3 text-xl font-semibold text-slate-900">
+              “{current.english}”
+            </div>
+            {current.notes && (
+              <div className="mt-2 text-xs italic text-slate-400">
+                {current.notes}
+              </div>
+            )}
+
+            {showAnswer ? (
+              <>
+                <div className="mt-6 border-t border-slate-100 pt-5">
+                  <div className="text-2xl font-bold text-slate-900">
+                    {current.russian}
+                  </div>
+                  <div className="mt-1 text-sm text-slate-500">
+                    {current.transliteration}
+                  </div>
+                  <div className="mt-3 flex justify-center">
+                    <AudioPlayer id={current.id} />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="mt-4 text-sm text-slate-500">
+                Try aloud, then reveal · <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-600">Space</kbd>
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {mode === "learn" ? (
+        <div className="mt-5 flex items-center justify-between">
+          <button
+            onClick={onPrev}
+            disabled={currentIdx === 0}
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-40"
+          >
+            <ArrowLeft className="h-4 w-4" /> Previous
+          </button>
+          {currentIdx < total - 1 ? (
+            <button
+              onClick={onNext}
+              className="flex items-center gap-2 rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/30 transition hover:bg-blue-600"
+            >
+              Next <ArrowRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={onStartRecall}
+              className="flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-emerald-500/30 transition hover:bg-emerald-600"
+            >
+              Start Recall <ArrowRight className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      ) : !showAnswer ? (
+        <button
+          onClick={() => setShowAnswer(true)}
+          className="mt-5 w-full rounded-xl bg-blue-500 py-3 text-sm font-semibold text-white shadow-md shadow-blue-500/30 transition hover:bg-blue-600"
+        >
+          Show Answer
+        </button>
+      ) : (
+        <div className="mt-5 grid grid-cols-4 gap-2">
+          <RecallBtn tone="red" label="Wrong" hint="1" onClick={() => onAnswer("wrong")} />
+          <RecallBtn tone="orange" label="Hard" hint="2" onClick={() => onAnswer("hard")} />
+          <RecallBtn tone="emerald" label="Good" hint="3" onClick={() => onAnswer("good")} />
+          <RecallBtn tone="emerald-solid" label="Easy" hint="4" onClick={() => onAnswer("easy")} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultsView({
+  results,
+  sessionItems,
+  onNew,
+  onRetryWrong,
+  onRetryAll,
+}: {
+  results: { id: number; correct: boolean; confidence: Confidence; nextReview: string | null }[];
+  sessionItems: Sentence[];
+  onNew: () => void;
+  onRetryWrong: () => void;
+  onRetryAll: () => void;
+}) {
+  const correct = results.filter((r) => r.correct).length;
+  const total = results.length;
+  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+  const wrongCount = results.filter((r) => !r.correct).length;
+
+  return (
+    <div className="mx-auto max-w-xl">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <CheckCircle2 className="mx-auto mb-3 h-8 w-8 text-emerald-500" />
+        <div className="text-5xl font-bold tabular-nums text-slate-900">
+          {accuracy}%
+        </div>
+        <div className="mt-1 text-sm text-slate-500">
+          {correct} of {total} correct
+        </div>
+        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full bg-emerald-500"
+            style={{ width: `${accuracy}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-1.5">
+        {results.map((r, i) => {
+          const item = sessionItems.find((s) => s.id === r.id);
+          const reviewDate = r.nextReview
+            ? new Date(r.nextReview).toLocaleDateString()
+            : null;
+          return (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+            >
+              <span className="min-w-0 flex-1 truncate text-slate-700">
+                <b className="font-semibold text-slate-900">{item?.russian}</b>{" "}
+                <span className="text-slate-500">— {item?.english}</span>
+              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                {reviewDate && (
+                  <span className="text-[11px] text-slate-400">{reviewDate}</span>
+                )}
+                <ConfidenceBadge value={r.confidence} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button
+          onClick={onNew}
+          className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          New Session
+        </button>
+        {wrongCount > 0 && (
+          <button
+            onClick={onRetryWrong}
+            className="flex-1 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-medium text-amber-700 transition hover:bg-amber-100"
+          >
+            Retry Wrong ({wrongCount})
+          </button>
+        )}
+        <button
+          onClick={onRetryAll}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-500 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-500/30 transition hover:bg-blue-600"
+        >
+          <RotateCcw className="h-4 w-4" />
+          Retry All
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- bits ---------------- */
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ChoiceChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "rounded-xl border px-3 py-2.5 text-sm font-medium transition",
+        active
+          ? "border-blue-500 bg-blue-500 text-white shadow-md shadow-blue-500/20"
+          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function RecallBtn({
+  tone,
+  label,
+  hint,
+  onClick,
+}: {
+  tone: "red" | "orange" | "emerald" | "emerald-solid";
+  label: string;
+  hint: string;
+  onClick: () => void;
+}) {
+  const tones = {
+    red: "border-red-200 bg-red-50 text-red-600 hover:bg-red-100",
+    orange: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+    "emerald-solid": "border-emerald-500 bg-emerald-500 text-white shadow-md shadow-emerald-500/30 hover:bg-emerald-600",
+  } as const;
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-center justify-center rounded-xl border py-3 text-sm font-semibold transition",
+        tones[tone]
+      )}
+    >
+      <span>{label}</span>
+      <span className="mt-0.5 text-[10px] opacity-70">{hint}</span>
+    </button>
+  );
+}
+
+function ConfidenceBadge({ value }: { value: Confidence }) {
+  const map = {
+    wrong: "bg-red-100 text-red-700",
+    hard: "bg-amber-100 text-amber-700",
+    good: "bg-emerald-100 text-emerald-700",
+    easy: "bg-emerald-500 text-white",
+  } as const;
+  return (
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize",
+        map[value]
+      )}
+    >
+      {value}
+    </span>
   );
 }
